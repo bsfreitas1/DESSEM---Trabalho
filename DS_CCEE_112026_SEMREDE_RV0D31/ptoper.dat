@@ -1,0 +1,38 @@
+&   PONTO DE OPERCAO
+&TOPER TPELEM ID  TP.VAR DI HI M DF HF M  VALORVAR 
+&TOPER xxxxxx xxx xxxxxx xx xx x xx xx x xxxxxxxxxx
+&Ajuste conforme inflexibilidade declarada
+PTOPER USIT    86 GERA   31  0 0 F               0.                                                 
+PTOPER USIT    86 GERA   03  9 0 F              45.                                                 
+PTOPER USIT    86 GERA   03 15 1 F              70.                                                 
+PTOPER USIT    86 GERA   03 16 0 F             130.                                                 
+PTOPER USIT    86 GERA   03 16 1 F             200.                                                 
+PTOPER USIT    86 GERA   03 17 0 F             250.                                                 
+PTOPER USIT    86 GERA   03 17 1 F             350.                                                 
+PTOPER USIT    86 GERA   03 22 1 F             156.                                                 
+PTOPER USIT    86 GERA   03 23 0 F               0.                                                 
+PTOPER USIT    86 GERA   04  9 0 F              45.                                                 
+PTOPER USIT    86 GERA   04 15 1 F              70.                                                 
+PTOPER USIT    86 GERA   04 16 0 F             130.                                                 
+PTOPER USIT    86 GERA   04 16 1 F             200.                                                 
+PTOPER USIT    86 GERA   04 17 0 F             250.                                                 
+PTOPER USIT    86 GERA   04 17 1 F             350.                                                 
+PTOPER USIT    86 GERA   04 22 1 F             156.                                                 
+PTOPER USIT    86 GERA   04 23 0 F               0.                                                 
+PTOPER USIT    86 GERA   05  9 0 F              45.                                                 
+PTOPER USIT    86 GERA   05 15 1 F              70.                                                 
+PTOPER USIT    86 GERA   05 16 0 F             130.                                                 
+PTOPER USIT    86 GERA   05 16 1 F             200.                                                 
+PTOPER USIT    86 GERA   05 17 0 F             250.                                                 
+PTOPER USIT    86 GERA   05 17 1 F             350.                                                 
+PTOPER USIT    86 GERA   05 22 1 F             156.                                                 
+PTOPER USIT    86 GERA   05 23 0 F               0.  
+PTOPER USIT    86 GERA   06  9 0 F              45.                                                 
+PTOPER USIT    86 GERA   06 15 1 F              70.                                                 
+PTOPER USIT    86 GERA   06 16 0 F             130.                                                 
+PTOPER USIT    86 GERA   06 16 1 F             200.                                                 
+PTOPER USIT    86 GERA   06 17 0 F             250.                                                 
+PTOPER USIT    86 GERA   06 17 1 F             350.                                                 
+PTOPER USIT    86 GERA   06 22 1 F             156.                                                 
+PTOPER USIT    86 GERA   06 23 0 F               0.  
+PTOPER USIT   224 GERA   31  0 0 F               0.

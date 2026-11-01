@@ -1,0 +1,34 @@
+ &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+ & Influências laterais 
+ &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+& ============== Belo Monte e Pimental
+ &;UsinaInfluenciada;FatorTurbinamento;FatorVertimento
+HIDRELETRICA-VAZAO-JUSANTE-INFLUENCIA-DEFLUENCIA;288;1;1
+ &
+ &;UsinaInfluenciada;CodigoPostoInfluenciador;Fator
+HIDRELETRICA-VAZAO-JUSANTE-INFLUENCIA-POSTO;288;314;0.07
+ &
+ &;UsinaInfluenciada;CodigoUsinaInfluenciadora;Fator
+HIDRELETRICA-VAZAO-JUSANTE-INFLUENCIA-USINA;288;314;1
+ &
+& ============== Itaipu e Baixo Iguacu
+ &;UsinaInfluenciada;FatorTurbinamento;FatorVertimento
+HIDRELETRICA-VAZAO-JUSANTE-INFLUENCIA-DEFLUENCIA;66;1.03;1.03
+ &
+ &;UsinaInfluenciada;CodigoUsinaInfluenciadora;Fator
+HIDRELETRICA-VAZAO-JUSANTE-INFLUENCIA-USINA;66;83;1.17
+ &
+& ============== Fontes AB e Fontes C
+ &;UsinaInfluenciada;FatorTurbinamento;FatorVertimento
+HIDRELETRICA-VAZAO-JUSANTE-INFLUENCIA-DEFLUENCIA;147;1;1
+ &
+ &;UsinaInfluenciada;CodigoUsinaInfluenciadora;Fator
+HIDRELETRICA-VAZAO-JUSANTE-INFLUENCIA-USINA;147;146;1
+ &
+& ============== Fontes C e Fontes AB
+ &;UsinaInfluenciada;FatorTurbinamento;FatorVertimento
+HIDRELETRICA-VAZAO-JUSANTE-INFLUENCIA-DEFLUENCIA;146;1;1
+ &
+ &;UsinaInfluenciada;CodigoUsinaInfluenciadora;Fator
+HIDRELETRICA-VAZAO-JUSANTE-INFLUENCIA-USINA;146;147;1
+ &

@@ -1,0 +1,26 @@
+&
+& == Condicoes iniciais ==
+&
+&Mnem  REST DREF Valor
+&xxxxx xxxx xxxx xxxxxxxxxx 
+&RMPFLX REST 9003        650
+&
+& == Limites ==
+&
+&Mnem  LIM  di hi m df hf m DREF rampa desc rampa sub
+&xxxxx xxxx xx xx x xx xx x xxxx xxxxxxxxxx xxxxxxxxxx 
+&RMPFLX LIMI  I       F      9003        100        100
+&
+&Mnem  REST DREF Valor
+&xxxxx xxxx xxxx xxxxxxxxxx 
+& Tratamento realizado pela CCEE
+RMPFLX REST  958       1020 1
+&RMPFLX REST 9058       1020
+&
+& == Limites ==
+&
+&Mnem  LIM  di hi m df hf m DREF rampa desc rampa sub
+&xxxxx xxxx xx xx x xx xx x xxxx xxxxxxxxxx xxxxxxxxxx 
+& Tratamento realizado pela CCEE
+RMPFLX LIMI 31 00 0 01 00 0  958       2400       2400 1
+&RMPFLX LIMI  I       F      9058       2400       2400
