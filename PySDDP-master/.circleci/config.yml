@@ -1,0 +1,107 @@
+version: 2.1
+workflows:
+  build_and_deploy:
+    jobs:
+      - build
+      - test-python-install:
+          version: "3.9"
+          requires:
+            - deploy
+      - deploy:
+          requires:
+            - build
+jobs:
+  build:
+    docker:
+      - image: circleci/python:3.9
+    steps:
+      - checkout
+      - restore_cache:
+          key: v2-dependency-cache-{{ checksum "setup.py" }}-{{ checksum "Makefile" }}-{{ checksum "dev-requirements.txt" }}
+      - run:
+          name: install python dependencies
+          command: |
+            python3 -m venv venv
+            . venv/bin/activate
+            pip install --upgrade pip setuptools wheel
+            make dev
+      - save_cache:
+          key: v2-dependency-cache-{{ checksum "setup.py" }}-{{ checksum "Makefile" }}-{{ checksum "dev-requirements.txt" }}
+          paths:
+            - "venv"
+      - store_artifacts:
+          path: htmlcov/
+  test-python-install:
+    parameters:
+      version:
+        type: string
+        default: latest
+    docker:
+      - image: circleci/python:<< parameters.version >>
+    steps:
+      - checkout
+      - restore_cache:
+          key: v2-dependency-cache-{{ checksum "setup.py" }}-{{ checksum "Makefile" }}-{{ checksum "dev-requirements.txt" }}
+      - run:
+          name: install python dependencies
+          command: |
+            python3 -m venv venv
+            . venv/bin/activate
+            pip install --upgrade pip setuptools wheel
+            make dev
+      - save_cache:
+          key: v2-dependency-cache-{{ checksum "setup.py" }}-{{ checksum "Makefile" }}-{{ checksum "dev-requirements.txt" }}
+          paths:
+            - "venv"
+      - store_artifacts:
+          path: htmlcov/
+      - run:
+          name: Smoke Test Install
+          command: |
+            python --version
+            sudo pip3 install PySDDP
+  integration:
+    docker:
+      - image: circleci/python:3.9
+    steps:
+      - run: echo "It works!"
+      - run: echo $RUN_EXTRA_TESTS
+  deploy:
+    docker:
+      - image: circleci/python:3.9
+    steps:
+      - checkout
+      - restore_cache:
+          key: v2-dependency-cache-{{ checksum "setup.py" }}-{{ checksum "Makefile" }}-{{ checksum "dev-requirements.txt" }}
+      - run:
+          name: install python dependencies
+          command: |
+            python3 -m venv venv
+            . venv/bin/activate
+            pip install --upgrade pip setuptools wheel
+            make dev
+      - save_cache:
+          key: v2-dependency-cache-{{ checksum "setup.py" }}-{{ checksum "Makefile" }}-{{ checksum "dev-requirements.txt" }}
+          paths:
+            - "venv"
+      - run:
+          name: create packages
+          command: |
+            make package
+      - run:
+          name: validate packages
+          command: |
+            . venv/bin/activate
+            twine check dist/*
+      - run:
+          name: upload to pypi
+          command: |
+            . venv/bin/activate
+            test -n "${PYPI_TOKEN:-}" || { echo "PYPI_TOKEN não definido"; exit 1; }
+            twine upload \
+              --verbose \
+              --non-interactive \
+              --repository-url https://upload.pypi.org/legacy/ \
+              --username "__token__" \
+              --password "$PYPI_TOKEN" \
+              dist/*
