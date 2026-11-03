@@ -5,7 +5,7 @@ Barra única, 336 meias horas (31/10 a 06/11). Equações da seção 10 do Manua
 Metodologia do DESSEM.
 
 Etapas:
-  1. ler os dados do deck (leitura.py)
+  1. ler os dados do deck com PySDDP (leitura_pysddp.py)
   2. montar o MILP: variáveis, restrições e função objetivo
   3. resolver
   4. calcular o CMO
@@ -17,7 +17,7 @@ from pathlib import Path
 import pandas as pd
 from pyscipopt import Model, SCIP_PARAMSETTING, quicksum
 
-from leitura import ler_dados
+from leitura_pysddp import ler_dados
 
 # Premissas definidas para o estudo (não estão no deck)
 DT = 0.5                    # duração de cada período (h)

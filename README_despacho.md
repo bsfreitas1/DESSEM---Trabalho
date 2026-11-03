@@ -24,7 +24,7 @@ Os números de linha se referem à versão de 01/11/2026. Se o código mudar, co
   - `Model`: o problema de otimização;
   - `quicksum`: soma de expressões, mais rápida que o `sum` comum;
   - `SCIP_PARAMSETTING`: atalho para desligar módulos do solver, usado no cálculo do CMO.
-- **20:** a função que lê o deck, definida em `leitura.py`.
+- **20:** a função que lê o deck com PySDDP, definida em `leitura_pysddp.py`.
 
 ## Linhas 22–27: premissas (o que não vem do deck)
 
