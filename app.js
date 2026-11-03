@@ -1,0 +1,554 @@
+// -----------------------------------------------------------------------------
+// Estado e utilitários
+// -----------------------------------------------------------------------------
+const $ = (id) => document.getElementById(id);
+
+const state = {
+  defaults: null,
+  values: null,
+  rows: null,
+  result: null,
+  period: 0,
+  timer: null,
+  running: false,
+  pending: false,
+  version: 0,
+  visible: {},
+};
+
+const controlGroups = [
+  {
+    title: 'Sistema',
+    subtitle: 'Demanda e penalidade de atendimento',
+    controls: [
+      ['demanda', 'Demanda do SE', 'Escala aplicada a toda a curva de demanda.'],
+      ['custo_deficit', 'Custo do déficit', 'Multiplicador da penalidade por energia não atendida.'],
+    ],
+  },
+  {
+    title: 'Furnas',
+    subtitle: 'Usina hidrelétrica de montante',
+    controls: [
+      ['afluencia_furnas', 'Afluência natural', 'Vazão natural total da cadeia a montante.'],
+    ],
+  },
+  {
+    title: 'Mascarenhas de Moraes',
+    subtitle: 'Usina hidrelétrica de jusante',
+    controls: [
+      ['afluencia_moraes', 'Afluência incremental', 'Vazão incremental própria da usina.'],
+    ],
+  },
+  {
+    title: 'Angra 1',
+    subtitle: 'Usina termelétrica',
+    controls: [
+      ['cvu_angra1', 'Custo variável', 'Multiplicador do custo variável unitário.'],
+      ['ton_angra1', 'Ton', 'Tempo mínimo ligada, em horas.'],
+      ['toff_angra1', 'Toff', 'Tempo mínimo desligada, em horas.'],
+    ],
+  },
+  {
+    title: 'Baixada Fluminense',
+    subtitle: 'Usina termelétrica',
+    controls: [
+      ['cvu_baixada', 'Custo variável', 'Multiplicador do custo variável unitário.'],
+      ['ton_baixada', 'Ton', 'Tempo mínimo ligada, em horas.'],
+      ['toff_baixada', 'Toff', 'Tempo mínimo desligada, em horas.'],
+    ],
+  },
+  {
+    title: 'Premissas do estudo',
+    subtitle: 'Limites globais da otimização',
+    controls: [
+      ['rampa', 'Fração de rampa', 'Percentual de Pmáx − Pmín por meia hora.'],
+      ['custo_vertimento', 'Custo do vertimento', 'Penalidade em R$ por hm³ de água vertida.'],
+    ],
+  },
+];
+
+const chartModes = {
+  generation: [
+    ['Demanda', (row) => row.demanda, '#17231e'],
+    ['Furnas', (row) => row.gh_FURNAS, '#2b8cad'],
+    ['Moraes', (row) => row.gh_MORAES, '#70b794'],
+    ['Angra 1', (row) => row.gt_ANGRA1, '#dc7040'],
+    ['Baixada', (row) => row.gt_BAIXADA, '#d9aa43'],
+  ],
+  cmo: [['CMO', (row) => row.cmo, '#194d3b']],
+  volume: [
+    ['Furnas', (row) => row.V_FURNAS, '#2b8cad'],
+    ['Moraes', (row) => row.V_MORAES, '#70b794'],
+  ],
+  flow: [
+    ['Furnas', (row) => row.q_FURNAS, '#2b8cad'],
+    ['Moraes', (row) => row.q_MORAES, '#70b794'],
+  ],
+  spill: [
+    ['Furnas', (row) => row.s_FURNAS, '#2b8cad'],
+    ['Moraes', (row) => row.s_MORAES, '#70b794'],
+  ],
+};
+
+function formatNumber(value, digits = 2) {
+  return Number(value).toLocaleString('pt-BR', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
+function escapeHtml(value) {
+  const replacements = {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'};
+  return String(value).replace(/[&<>"']/g, (character) => replacements[character]);
+}
+
+function setStatus(title, detail, type = 'ready') {
+  $('status-title').textContent = title;
+  $('status-text').textContent = detail;
+  $('status').className = `status ${type}`;
+}
+
+function showToast(message) {
+  $('toast').textContent = message;
+  $('toast').className = 'show';
+  setTimeout(() => {$('toast').className = '';}, 5000);
+}
+
+async function requestJson(url, options = {}) {
+  const response = await fetch(url, {cache: 'no-store', ...options});
+  const body = await response.json();
+  if (!response.ok) {
+    const error = new Error(body.error || `Erro HTTP ${response.status}`);
+    error.code = response.status;
+    throw error;
+  }
+  return body;
+}
+
+// -----------------------------------------------------------------------------
+// Controles dos parâmetros
+// -----------------------------------------------------------------------------
+function isTimeControl(key) {
+  return key.startsWith('ton_') || key.startsWith('toff_');
+}
+
+function displayControlValue(key, value) {
+  if (key === 'custo_vertimento') return `R$ ${formatNumber(value, 2)}/hm³`;
+  if (isTimeControl(key)) return `${formatNumber(value, 1)} h`;
+  return `${formatNumber(value * 100, 0)}%`;
+}
+
+function controlStep(key) {
+  if (isTimeControl(key)) return 0.5;
+  if (key === 'custo_vertimento' || key === 'rampa') return 0.01;
+  return 0.05;
+}
+
+function controlHtml(key, label, help, limits) {
+  const [minimum, maximum] = limits[key];
+  return `
+    <div class="control">
+      <div class="control-heading">
+        <label for="${key}">${label}</label>
+        <output id="out-${key}"></output>
+      </div>
+      <input id="${key}" type="range" min="${minimum}" max="${maximum}" step="${controlStep(key)}">
+      <div class="scale">
+        <small>${displayControlValue(key, minimum)}</small>
+        <small>${displayControlValue(key, maximum)}</small>
+      </div>
+      <small>${help}</small>
+    </div>`;
+}
+
+function drawControls(limits) {
+  $('controls').innerHTML = controlGroups.map((group, index) => `
+    <details class="control-group" ${index === 0 ? 'open' : ''}>
+      <summary>
+        <span><b>${group.title}</b><small>${group.subtitle}</small></span>
+        <i aria-hidden="true">⌄</i>
+      </summary>
+      <div class="control-group-body">
+        ${group.controls.map(([key, label, help]) => controlHtml(key, label, help, limits)).join('')}
+      </div>
+    </details>`).join('');
+
+  controlGroups.flatMap((group) => group.controls).forEach(([key]) => {
+    const input = $(key);
+    input.value = state.values[key];
+    input.addEventListener('input', () => {
+      state.values[key] = Number(input.value);
+      updateControl(key);
+      state.version += 1;
+      scheduleRun();
+    });
+    updateControl(key);
+  });
+}
+
+function updateControl(key) {
+  const input = $(key);
+  const ratio = (Number(input.value) - Number(input.min)) / (Number(input.max) - Number(input.min));
+  input.style.setProperty('--fill', `${ratio * 100}%`);
+  $(`out-${key}`).textContent = displayControlValue(key, Number(input.value));
+}
+
+function resetControls() {
+  state.values = {...state.defaults};
+  controlGroups.flatMap((group) => group.controls).forEach(([key]) => {
+    $(key).value = state.values[key];
+    updateControl(key);
+  });
+  state.version += 1;
+  scheduleRun(true);
+}
+
+// -----------------------------------------------------------------------------
+// Execução da otimização
+// -----------------------------------------------------------------------------
+function scheduleRun(immediate = false) {
+  if (!$('auto-run').checked && !immediate) {
+    setStatus('Alterações pendentes', 'Clique em Executar otimização.', 'pending');
+    return;
+  }
+
+  clearTimeout(state.timer);
+  setStatus('Cenário alterado', 'Aguardando recálculo…', 'pending');
+  state.timer = setTimeout(executeDispatch, immediate ? 0 : 850);
+}
+
+async function executeDispatch() {
+  clearTimeout(state.timer);
+  if (state.running) {
+    state.pending = true;
+    return;
+  }
+
+  state.running = true;
+  state.pending = false;
+  const requestedVersion = state.version;
+  const values = {...state.values};
+  $('run').disabled = true;
+  setStatus('Otimizando cenário', 'MILP e cálculo do CMO em execução…', 'running');
+
+  try {
+    const result = await requestJson('/api/dispatch', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ajustes: values}),
+    });
+
+    if (requestedVersion === state.version) {
+      state.result = result;
+      state.rows = result.linhas;
+      renderAll();
+      setStatus(
+        `Solução ${result.status}`,
+        `Gap ${formatNumber(result.gap * 100, 3)}% · ${formatNumber(result.tempo_s, 2)} s`,
+      );
+    }
+  } catch (error) {
+    if (error.code === 409) {
+      state.pending = true;
+      setStatus('Solver ocupado', 'Nova execução aguardando…', 'pending');
+    } else {
+      setStatus('Falha na otimização', error.message, 'error');
+      showToast(error.message);
+    }
+  } finally {
+    state.running = false;
+    $('run').disabled = false;
+    if (state.pending || (requestedVersion !== state.version && $('auto-run').checked)) {
+      state.pending = false;
+      setTimeout(executeDispatch, 1000);
+    }
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Indicadores, período em foco e tabela
+// -----------------------------------------------------------------------------
+function renderAll() {
+  const summary = state.result.resumo;
+  $('cost').textContent = formatNumber(state.result.custo);
+  $('hydro').textContent = formatNumber(summary.energia_hidraulica, 0);
+  $('thermal').textContent = formatNumber(summary.energia_termica, 0);
+  $('cmo').textContent = formatNumber(summary.cmo_medio);
+  $('period').disabled = false;
+  $('download').disabled = false;
+  fillChartPeriods();
+  renderPeriod();
+  renderChart();
+  renderTable();
+}
+
+function setText(id, value, unit = '', digits = 2) {
+  $(id).textContent = `${formatNumber(value, digits)}${unit}`;
+}
+
+function renderPeriod() {
+  if (!state.rows) return;
+  const row = state.rows[state.period];
+  $('period').value = state.period + 1;
+  $('period').style.setProperty('--fill', `${state.period / (state.rows.length - 1) * 100}%`);
+  $('period-label').textContent = `${row.inicio.replace(' ', ' · ')} · Período ${row.t}`;
+  setText('furnas-gen', row.gh_FURNAS);
+  setText('furnas-q', row.q_FURNAS);
+  setText('furnas-v', row.V_FURNAS);
+  setText('moraes-gen', row.gh_MORAES);
+  setText('moraes-q', row.q_MORAES);
+  setText('moraes-v', row.V_MORAES);
+  setText('angra-gen', row.gt_ANGRA1, ' MW');
+  setText('baixada-gen', row.gt_BAIXADA, ' MW');
+  setText('period-demand', row.demanda, ' MW');
+  setText('period-deficit', row.deficit, ' MW');
+  setText('period-cmo', row.cmo, ' R$/MWh');
+  $('day').value = String(Math.floor(state.period / 48));
+  document.querySelectorAll('#rows tr[data-index]').forEach((rowElement) => {
+    rowElement.classList.toggle('active', Number(rowElement.dataset.index) === state.period);
+  });
+}
+
+function renderTable() {
+  if (!state.rows) return;
+  const day = Number($('day').value || 0);
+  const start = day * 48;
+  $('rows').innerHTML = state.rows.slice(start, start + 48).map((row, index) => `
+    <tr data-index="${start + index}" class="${start + index === state.period ? 'active' : ''}">
+      <td>${escapeHtml(row.inicio.slice(11))}</td>
+      <td>${formatNumber(row.demanda)}</td><td>${formatNumber(row.gh_FURNAS)}</td>
+      <td>${formatNumber(row.gh_MORAES)}</td><td>${formatNumber(row.gt_ANGRA1)}</td>
+      <td>${formatNumber(row.gt_BAIXADA)}</td><td>${formatNumber(row.deficit)}</td>
+      <td>${formatNumber(row.cmo)}</td>
+    </tr>`).join('');
+
+  document.querySelectorAll('#rows tr[data-index]').forEach((rowElement) => {
+    rowElement.onclick = () => {
+      state.period = Number(rowElement.dataset.index);
+      renderPeriod();
+      renderChart();
+    };
+  });
+}
+
+// -----------------------------------------------------------------------------
+// Gráfico temporal
+// -----------------------------------------------------------------------------
+function fillChartPeriods() {
+  if ($('chart-period').options.length > 1) return;
+  $('chart-period').innerHTML = '<option value="all">Todos os períodos</option>' + state.rows.map((row, index) =>
+    `<option value="${index}">P${String(row.t).padStart(3, '0')} · ${escapeHtml(row.inicio.slice(5))}</option>`
+  ).join('');
+}
+
+function selectedChartRows() {
+  const selection = $('chart-period').value;
+  if (selection === 'all') return state.rows.map((row, index) => ({row, index}));
+  const index = Number(selection);
+  return [{row: state.rows[index], index}];
+}
+
+function renderChart() {
+  if (!state.rows) return;
+
+  const mode = $('chart-mode').value;
+  const available = chartModes[mode];
+  const selected = state.visible[mode] ?? new Set(available.map(([name]) => name));
+  state.visible[mode] = selected;
+  const series = available.filter(([name]) => selected.has(name));
+  const points = selectedChartRows();
+  const rows = points.map(({row}) => row);
+
+  const fullscreen = document.fullscreenElement === $('chart-panel');
+  const width = Math.max(640, Math.round($('chart').clientWidth || 940));
+  const height = fullscreen ? Math.max(420, window.innerHeight - 185) : 290;
+  const left = 55;
+  const right = 15;
+  const top = 18;
+  const bottom = 35;
+  $('chart').style.setProperty('--chart-height', `${height}px`);
+
+  const values = series.flatMap(([, valueOf]) => rows.map(valueOf));
+  const minimum = Math.min(0, ...values);
+  const maximum = Math.max(1, ...values);
+  const span = maximum - minimum;
+  const x = (index) => rows.length === 1
+    ? left + (width - left - right) / 2
+    : left + index * (width - left - right) / (rows.length - 1);
+  const y = (value) => top + (maximum - value) * (height - top - bottom) / span;
+
+  let svg = `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" aria-label="Série temporal">`;
+  svg += `<rect x="0" y="0" width="${width}" height="${height}" fill="transparent"/>`;
+
+  for (let line = 0; line <= 4; line += 1) {
+    const value = minimum + span * line / 4;
+    const position = y(value);
+    svg += `<line x1="${left}" y1="${position}" x2="${width - right}" y2="${position}" stroke="#e2e6df"/>`;
+    svg += `<text x="${left - 7}" y="${position + 4}" text-anchor="end" fill="#68746e" font-size="11">${formatNumber(value, 0)}</text>`;
+  }
+
+  if (rows.length === 1) {
+    svg += `<text x="${x(0)}" y="${height - 9}" text-anchor="middle" fill="#68746e" font-size="11">${escapeHtml(rows[0].inicio.slice(5))}</text>`;
+  } else {
+    for (let index = 0; index < rows.length; index += 48) {
+      svg += `<line x1="${x(index)}" y1="${top}" x2="${x(index)}" y2="${height - bottom}" stroke="#e2e6df"/>`;
+      svg += `<text x="${x(index)}" y="${height - 9}" text-anchor="middle" fill="#68746e" font-size="11">${rows[index].inicio.slice(8, 10)}/${rows[index].inicio.slice(5, 7)}</text>`;
+    }
+  }
+
+  series.forEach(([, valueOf, color]) => {
+    const coordinates = rows.map((row, index) => `${x(index).toFixed(1)},${y(valueOf(row)).toFixed(1)}`).join(' ');
+    svg += `<polyline points="${coordinates}" fill="none" stroke="${color}" stroke-width="2.2" vector-effect="non-scaling-stroke"/>`;
+    if (rows.length === 1) svg += `<circle cx="${x(0)}" cy="${y(valueOf(rows[0]))}" r="5" fill="${color}"/>`;
+  });
+
+  const focusedPoint = points.findIndex(({index}) => index === state.period);
+  const cursorIndex = focusedPoint >= 0 ? focusedPoint : 0;
+  svg += `<line id="cursor" x1="${x(cursorIndex)}" y1="${top}" x2="${x(cursorIndex)}" y2="${height - bottom}" stroke="#17231e" stroke-dasharray="4 4"/>`;
+  svg += `<rect id="chart-hit" x="${left}" y="${top}" width="${width - left - right}" height="${height - top - bottom}" fill="transparent"></svg>`;
+  $('chart').innerHTML = `${svg}<div class="tooltip" id="tooltip"></div>`;
+
+  $('legend').innerHTML = available.map(([name, , color], index) => `
+    <label>
+      <input type="checkbox" data-curve="${index}" ${selected.has(name) ? 'checked' : ''}>
+      <i style="background:${color}"></i><span>${name}</span>
+    </label>`).join('');
+
+  document.querySelectorAll('[data-curve]').forEach((input) => {
+    input.onchange = () => {
+      const name = available[Number(input.dataset.curve)][0];
+      input.checked ? selected.add(name) : selected.delete(name);
+      renderChart();
+    };
+  });
+
+  const hitArea = $('chart-hit');
+  hitArea.onmousemove = (event) => showChartTooltip(event, points, series, width, x);
+  hitArea.onmouseleave = () => {$('tooltip').style.display = 'none';};
+  hitArea.onclick = (event) => selectChartPoint(event, points, width);
+}
+
+function chartPointAt(event, pointCount, width) {
+  if (pointCount === 1) return 0;
+  const bounds = $('chart').getBoundingClientRect();
+  const left = 55;
+  const right = 15;
+  return Math.max(0, Math.min(pointCount - 1, Math.round(
+    ((event.clientX - bounds.left) / bounds.width * width - left) / (width - left - right) * (pointCount - 1)
+  )));
+}
+
+function showChartTooltip(event, points, series, width, x) {
+  const pointIndex = chartPointAt(event, points.length, width);
+  const row = points[pointIndex].row;
+  const bounds = $('chart').getBoundingClientRect();
+  $('cursor').setAttribute('x1', x(pointIndex));
+  $('cursor').setAttribute('x2', x(pointIndex));
+  $('tooltip').style.display = 'block';
+  $('tooltip').style.left = `${Math.min(bounds.width - 155, event.clientX - bounds.left + 12)}px`;
+  $('tooltip').style.top = '13px';
+  const values = series.length
+    ? series.map(([name, valueOf]) => `${escapeHtml(name)}: ${formatNumber(valueOf(row))}`).join('<br>')
+    : 'Nenhuma curva selecionada';
+  $('tooltip').innerHTML = `${escapeHtml(row.inicio)}<br>${values}`;
+}
+
+function selectChartPoint(event, points, width) {
+  state.period = points[chartPointAt(event, points.length, width)].index;
+  renderPeriod();
+  renderTable();
+  renderChart();
+}
+
+// -----------------------------------------------------------------------------
+// Exportação e eventos
+// -----------------------------------------------------------------------------
+function downloadCsv() {
+  if (!state.rows) return;
+  const columns = Object.keys(state.rows[0]);
+  const lines = [
+    columns.join(';'),
+    ...state.rows.map((row) => columns.map((column) => String(row[column] ?? '').replace('.', ',')).join(';')),
+  ];
+  const blob = new Blob([`\ufeff${lines.join('\r\n')}`], {type: 'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'despacho_cenario.csv';
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function toggleParameterPanel() {
+  const collapsed = $('workspace').classList.toggle('params-collapsed');
+  $('collapse-params').setAttribute('aria-expanded', String(!collapsed));
+  document.querySelector('.collapse-icon').textContent = collapsed ? '›' : '‹';
+  document.querySelector('.collapse-label').textContent = collapsed ? 'Mostrar parâmetros' : 'Recolher parâmetros';
+  requestAnimationFrame(renderChart);
+}
+
+$('run').onclick = () => scheduleRun(true);
+$('reset').onclick = resetControls;
+$('collapse-params').onclick = toggleParameterPanel;
+$('auto-run').onchange = () => $('auto-run').checked
+  ? scheduleRun(true)
+  : setStatus('Recálculo pausado', 'Use Executar otimização para aplicar ajustes.', 'pending');
+$('period').oninput = (event) => {
+  state.period = Number(event.target.value) - 1;
+  renderPeriod();
+  renderTable();
+  renderChart();
+};
+$('chart-mode').onchange = renderChart;
+$('chart-period').onchange = () => {
+  if ($('chart-period').value !== 'all') {
+    state.period = Number($('chart-period').value);
+    renderPeriod();
+    renderTable();
+  }
+  renderChart();
+};
+$('day').onchange = renderTable;
+$('download').onclick = downloadCsv;
+$('fullscreen').onclick = async () => {
+  if (document.fullscreenElement) await document.exitFullscreen();
+  else await $('chart-panel').requestFullscreen();
+};
+
+document.addEventListener('fullscreenchange', () => {
+  const fullscreen = Boolean(document.fullscreenElement);
+  $('fullscreen').textContent = fullscreen ? 'Sair da tela cheia' : 'Tela cheia ↗';
+  $('fullscreen').setAttribute('aria-pressed', String(fullscreen));
+  requestAnimationFrame(renderChart);
+});
+
+window.addEventListener('resize', () => {
+  if (state.rows) requestAnimationFrame(renderChart);
+});
+
+// -----------------------------------------------------------------------------
+// Inicialização
+// -----------------------------------------------------------------------------
+async function initialize() {
+  try {
+    const config = await requestJson('/api/config');
+    state.defaults = config.ajustes;
+    state.values = {...config.ajustes};
+    drawControls(config.limites);
+    $('period').max = config.periodos;
+
+    const initialDate = new Date(`${config.inicio}Z`);
+    $('day').innerHTML = Array.from({length: config.periodos / 48}, (_, index) => {
+      const date = new Date(initialDate.getTime() + index * 86400000);
+      const label = date.toLocaleDateString('pt-BR', {day: '2-digit', month: 'short', timeZone: 'UTC'});
+      return `<option value="${index}">${label}</option>`;
+    }).join('');
+
+    scheduleRun(true);
+  } catch (error) {
+    setStatus('Servidor indisponível', error.message, 'error');
+    showToast('Inicie com python server.py e acesse http://127.0.0.1:8001');
+  }
+}
+
+initialize();

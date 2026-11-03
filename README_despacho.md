@@ -8,6 +8,8 @@ O `despacho.py` monta e resolve o despacho hidrotérmico reduzido a partir do de
 
 Para rodar: `python despacho.py` (gera `saida/despacho.csv`) e depois `python graficos.py`.
 
+Para explorar cenários pela interface web local, execute `python server.py` e consulte `README_interface.md`.
+
 Os números de linha se referem à versão de 01/11/2026. Se o código mudar, confira antes de usar.
 
 **Resultado do caso base:** custo de R$ 8.534.369,26, gap 0 (ótimo comprovado), sem déficit, CMO de 31,17 R$/MWh em todos os períodos.
@@ -24,7 +26,7 @@ Os números de linha se referem à versão de 01/11/2026. Se o código mudar, co
   - `Model`: o problema de otimização;
   - `quicksum`: soma de expressões, mais rápida que o `sum` comum;
   - `SCIP_PARAMSETTING`: atalho para desligar módulos do solver, usado no cálculo do CMO.
-- **20:** a função que lê o deck, definida em `leitura.py`.
+- **20:** a função que lê o deck com PySDDP, definida em `leitura_pysddp.py`.
 
 ## Linhas 22–27: premissas (o que não vem do deck)
 
@@ -219,16 +221,17 @@ Eventos na solução (em todos os outros períodos, y = w = 0):
 | Baixada | 154 | 0 → 1 | 1 | 0 |
 | Baixada | 333 | 1 → 0 | 0 | 1 |
 
-### Linhas 109–114: tempos mínimos ligada e desligada
+### Tempos mínimos ligada e desligada
 
-**(10.3), linha 110:** Σ u(k), de k = t até t+janela−1, ≥ janela × (u(t) − u(t−1)).
+**(10.3):** em cada período t, a soma das partidas ocorridas nos últimos Ton períodos deve ser menor ou igual a u(t).
 
-- **Se a usina parte em t:** o lado direito vale `janela`. A soma de `janela` valores de u só chega a isso se **todos** forem 1, então a usina fica ligada a janela inteira.
-- **Se não parte:** o lado direito é 0 ou negativo, e a restrição não restringe nada.
-- **Por que a janela é cortada (linha 109):** `min(ton, T - t + 1)` encurta a janela perto do fim do horizonte. Sem isso, uma partida em t = 300 exigiria ficar ligada até t = 443, que não existe. Com o corte, a regra vira "fica ligada até o fim".
-- **Na solução:** Angra parte em t = 1 com Ton = 336 e fica ligada o horizonte todo.
+- Se houve partida nessa janela, a soma vale 1 e força u(t) = 1.
+- A regra é aplicada em cada período disponível; perto do fim do horizonte, ela exige que a unidade permaneça ligada até o último período existente.
+- Na solução, Angra parte em t = 1 com Ton = 336 períodos e fica ligada durante todo o horizonte.
 
-**(10.4), linha 114:** é o espelho da anterior. Se a usina para em t, então Σ (1 − u) ≥ janela, ou seja, todos os u da janela valem 0. A Baixada para em t = 3 e fica desligada pelo menos até t = 98; na solução, só volta em t = 154.
+**(10.4):** é o espelho da anterior. A soma das paradas nos últimos Toff períodos deve ser menor ou igual a 1 − u(t). Se houve parada, u(t) é forçado a zero. A Baixada para em t = 3 e fica desligada pelo menos até t = 98; na solução, só volta em t = 154.
+
+Essa forma acumulada é matematicamente equivalente às janelas futuras usadas anteriormente. Ela é a formulação padrão de compromisso térmico e cria uma estrutura mais eficiente para o presolve e a relaxação do SCIP.
 
 ### Linhas 117–119: limites de geração com trajetórias, (10.8) e (10.9)
 
@@ -410,6 +413,7 @@ A Baixada gera só 8% da energia, mas responde por 62% do custo, porque o CVU de
   O gap é a diferença relativa entre os dois. Com `1e-5`, o SCIP para quando a solução está a menos de 0,001% do ótimo possível. Aqui o gap fecha em 0: a solução é **comprovadamente ótima**.
 - **165:** limite de 15 minutos, só por segurança. Resolve em uns 30 s.
 - **166:** `optimize()` resolve o MILP. Por dentro, o SCIP faz pré-solução (simplifica o problema), relaxação linear, cortes e branch-and-bound. É o log que aparece na tela.
+- O número de rodadas de pré-solução é limitado a 10. Neste caso, as janelas longas de Ton/Toff faziam o SCIP repetir mais de cem rodadas e criar centenas de milhares de cliques, embora a solução fosse provada ótima no nó raiz. O limite reduz esse custo sem alterar a formulação ou a tolerância de otimalidade.
 - **167:** imprime o status, o custo e o gap.
 
 ### Linhas 169–182: guardar a solução numa tabela
