@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DESSEM Lab | Despacho hidrotérmico</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="chart.css">
+</head>
+
+<body>
+  <header class="topbar">
+    <b>◉ DESSEM <i>Lab</i></b>
+    <span>ESTUDO D31 · 31 OUT — 06 NOV 2026</span>
+    <small>● SERVIDOR LOCAL</small>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div>
+        <small>DESPACHO HIDROTÉRMICO · BARRA ÚNICA</small>
+        <h1>Da água à decisão,<br><i>meia hora por meia hora.</i></h1>
+        <p>Explore o despacho de Furnas, Mascarenhas de Moraes, Angra 1 e Baixada Fluminense. Cada ajuste recalcula o mesmo modelo de otimização.</p>
+      </div>
+      <div class="actions">
+        <button id="reset" type="button">Restaurar padrão</button>
+        <button id="run" class="primary" type="button">Executar otimização ↗</button>
+      </div>
+    </section>
+
+    <div id="workspace" class="layout">
+      <aside id="parameter-panel" class="panel parameter-panel">
+        <button id="collapse-params" class="collapse-button" type="button" aria-expanded="true" aria-controls="parameter-content">
+          <span class="collapse-icon">‹</span>
+          <span class="collapse-label">Recolher parâmetros</span>
+        </button>
+
+        <div id="parameter-content">
+          <div id="status" class="status">
+            <span class="dot"></span>
+            <div><b id="status-title">Preparando cenário</b><small id="status-text">Conectando ao servidor…</small></div>
+          </div>
+          <label class="auto"><input id="auto-run" type="checkbox" checked> Reotimizar após alterações</label>
+          <h2>Entradas do cenário</h2>
+          <p class="muted">Os controles estão separados por sistema e usina. Os arquivos do deck permanecem intactos.</p>
+          <div id="controls"></div>
+          <div class="aside-foot"><small>HORIZONTE</small><b>336 períodos · 30 min</b><p>Dados: PySDDP · Otimizador: PySCIPOpt</p></div>
+        </div>
+      </aside>
+
+      <div class="content">
+        <section class="metrics" aria-label="Resumo do cenário">
+          <article><small>CUSTO TOTAL</small><b id="cost">—</b><span>R$ no horizonte</span></article>
+          <article><small>GERAÇÃO HIDRÁULICA</small><b id="hydro">—</b><span>MWh no horizonte</span></article>
+          <article><small>GERAÇÃO TÉRMICA</small><b id="thermal">—</b><span>MWh no horizonte</span></article>
+          <article><small>CMO MÉDIO</small><b id="cmo">—</b><span>R$/MWh</span></article>
+        </section>
+
+        <section class="panel">
+          <div class="title"><div><small>VISÃO OPERACIONAL</small><h2>Um período em foco</h2></div><b id="period-label" class="badge">Aguardando resultado</b></div>
+          <label class="period-control">Selecione uma meia hora<input id="period" type="range" min="1" max="336" value="1" disabled><span>31 OUT · 00:00 <em>06 NOV · 23:30</em></span></label>
+          <div class="cascade">
+            <article><small>01 · MONTANTE</small><h3>Furnas</h3><strong id="furnas-gen">—</strong> MW<div>Vazão <b id="furnas-q">—</b> m³/s · Volume <b id="furnas-v">—</b> hm³</div></article>
+            <span>ÁGUA LIBERADA →</span>
+            <article><small>02 · JUSANTE</small><h3>Mascarenhas de Moraes</h3><strong id="moraes-gen">—</strong> MW<div>Vazão <b id="moraes-q">—</b> m³/s · Volume <b id="moraes-v">—</b> hm³</div></article>
+          </div>
+          <div class="period-stats"><div>Angra 1<b id="angra-gen">—</b></div><div>Baixada<b id="baixada-gen">—</b></div><div>Demanda<b id="period-demand">—</b></div><div>Déficit<b id="period-deficit">—</b></div><div>CMO<b id="period-cmo">—</b></div></div>
+        </section>
+
+        <section id="chart-panel" class="panel chart-panel">
+          <div class="title">
+            <div><small>ANÁLISE TEMPORAL</small><h2>Evolução do despacho</h2></div>
+            <div class="chart-actions">
+              <label>Variável<select id="chart-mode" aria-label="Variável do gráfico"><option value="generation">Geração e demanda</option><option value="cmo">CMO</option><option value="volume">Volumes</option><option value="flow">Vazões turbinadas</option><option value="spill">Vertimentos</option></select></label>
+              <label>Período<select id="chart-period" aria-label="Período exibido no gráfico"><option value="all">Todos os períodos</option></select></label>
+              <button id="fullscreen" type="button" aria-pressed="false">Tela cheia ↗</button>
+            </div>
+          </div>
+          <div id="chart" class="chart">Aguardando otimização…</div>
+          <div id="legend" class="legend" aria-label="Curvas visíveis"></div>
+        </section>
+
+        <section class="panel">
+          <div class="title"><div><small>DETALHAMENTO</small><h2>Resultados por meia hora</h2></div><div class="table-actions"><select id="day" aria-label="Dia da tabela"></select><button id="download" type="button" disabled>Baixar CSV ↓</button></div></div>
+          <div class="table-wrap"><table><thead><tr><th>Início</th><th>Demanda<br>MW</th><th>Furnas<br>MW</th><th>Moraes<br>MW</th><th>Angra 1<br>MW</th><th>Baixada<br>MW</th><th>Déficit<br>MW</th><th>CMO<br>R$/MWh</th></tr></thead><tbody id="rows"><tr><td colspan="8">Aguardando otimização…</td></tr></tbody></table></div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <div id="toast" role="alert" aria-live="assertive"></div>
+  <script src="app.js"></script>
+</body>
+</html>
