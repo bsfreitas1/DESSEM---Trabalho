@@ -9,22 +9,16 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from despacho import AJUSTES_PADRAO, DT, executar_despacho
-from leitura_pysddp import ler_dados
+from leitura_pysddp import TERMICAS_PADRAO, ler_dados
 
 
 RAIZ = Path(__file__).resolve().parent
 DADOS_BASE = ler_dados()
-LIMITES = {
+LIMITES_BASE = {
     "demanda": (0.7, 1.3),
     "custo_deficit": (0.5, 2.0),
     "afluencia_furnas": (0.5, 1.5),
     "afluencia_moraes": (0.5, 1.5),
-    "cvu_angra1": (0.5, 1.5),
-    "cvu_baixada": (0.5, 1.5),
-    "ton_angra1": (0.5, 336.0),
-    "toff_angra1": (0.5, 336.0),
-    "ton_baixada": (0.5, 336.0),
-    "toff_baixada": (0.5, 336.0),
     "rampa": (0.1, 0.4),
     "custo_vertimento": (0.0, 1.0),
 }
@@ -39,11 +33,44 @@ TRAVA = threading.Lock()
 CACHE = {}
 
 
-def validar_ajustes(recebidos):
-    if not isinstance(recebidos, dict) or set(recebidos) != set(AJUSTES_PADRAO):
+def metadados_termicas():
+    return [{
+        "id": identificador, "nome": dados["nome"], "rotulo": dados["rotulo"],
+        "codigo_usina": dados["codigo_usina"], "unidade": dados["unidade"],
+        "cvu": dados["cvu"], "ton_h": dados["ton_h"], "toff_h": dados["toff_h"],
+        "pmin": dados["pmin"], "pmax": dados["pmax"],
+    } for identificador, dados in DADOS_BASE["termicas"].items()]
+
+
+def validar_termicas(recebidas):
+    if not isinstance(recebidas, list) or len(recebidas) != 2 or len(set(recebidas)) != 2:
+        raise ValueError("Selecione exatamente duas UTEs diferentes.")
+    if any(nome not in DADOS_BASE["termicas"] for nome in recebidas):
+        raise ValueError("Sele\u00e7\u00e3o de UTE inv\u00e1lida.")
+    return tuple(recebidas)
+
+
+def ajustes_e_limites(termicas):
+    ajustes = dict(AJUSTES_PADRAO)
+    limites = dict(LIMITES_BASE)
+    for nome in termicas:
+        dados = DADOS_BASE["termicas"][nome]
+        sufixo = nome.lower()
+        ajustes[f"cvu_{sufixo}"] = 1.0
+        ajustes[f"ton_{sufixo}"] = dados["ton_h"]
+        ajustes[f"toff_{sufixo}"] = dados["toff_h"]
+        limites[f"cvu_{sufixo}"] = (0.5, 1.5)
+        limites[f"ton_{sufixo}"] = (0.0, max(336.0, dados["ton_h"]))
+        limites[f"toff_{sufixo}"] = (0.0, max(336.0, dados["toff_h"]))
+    return ajustes, limites
+
+
+def validar_ajustes(recebidos, termicas):
+    padroes, limites = ajustes_e_limites(termicas)
+    if not isinstance(recebidos, dict) or set(recebidos) != set(padroes):
         raise ValueError("Envie todos os parâmetros do cenário.")
     ajustes = {}
-    for chave, (minimo, maximo) in LIMITES.items():
+    for chave, (minimo, maximo) in limites.items():
         valor = recebidos[chave]
         if isinstance(valor, bool) or not isinstance(valor, (int, float)) or not math.isfinite(valor):
             raise ValueError(f"Valor inválido para {chave}.")
@@ -53,11 +80,15 @@ def validar_ajustes(recebidos):
     return ajustes
 
 
-def resposta_despacho(ajustes):
-    chave = tuple(ajustes[nome] for nome in AJUSTES_PADRAO)
+def resposta_despacho(ajustes, termicas, efeito_fim_mundo=False):
+    chave = termicas + (efeito_fim_mundo,) + tuple((nome, ajustes[nome]) for nome in sorted(ajustes))
     if chave not in CACHE:
         inicio = perf_counter()
-        solucao = executar_despacho(ajustes=ajustes, salvar=False, dados_base=DADOS_BASE)
+        solucao = executar_despacho(
+            ajustes=ajustes, salvar=False, dados_base=DADOS_BASE,
+            termicas_selecionadas=termicas,
+            efeito_fim_mundo=efeito_fim_mundo,
+        )
         tabela = solucao["resultado"]
         if len(CACHE) >= 12:
             CACHE.pop(next(iter(CACHE)))
@@ -70,11 +101,13 @@ def resposta_despacho(ajustes):
             "linhas": json.loads(tabela.to_json(orient="records")),
             "resumo": {
                 "energia_hidraulica": float(sum(tabela[f"gh_{h}"].sum() for h in ("FURNAS", "MORAES")) * DT),
-                "energia_termica": float(sum(tabela[f"gt_{u}"].sum() for u in ("ANGRA1", "BAIXADA")) * DT),
+                "energia_termica": float(sum(tabela[f"gt_{u}"].sum() for u in termicas) * DT),
                 "energia_deficit": float(tabela["deficit"].sum() * DT),
                 "cmo_medio": float(tabela["cmo"].mean()),
                 "cmo_maximo": float(tabela["cmo"].max()),
             },
+            "termicas": [{"id": nome, "nome": DADOS_BASE["termicas"][nome]["nome"]}
+                         for nome in termicas],
         }
     return CACHE[chave]
 
@@ -92,7 +125,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         caminho = urlsplit(self.path).path
         if caminho == "/api/config":
-            self.enviar_json({"ajustes": AJUSTES_PADRAO, "limites": LIMITES,
+            ajustes, limites = ajustes_e_limites(TERMICAS_PADRAO)
+            self.enviar_json({"ajustes": ajustes, "limites": limites,
+                             "termicas": metadados_termicas(),
+                             "termicas_padrao": TERMICAS_PADRAO,
                              "periodos": DADOS_BASE["T"], "inicio": DADOS_BASE["inicio"].isoformat()})
             return
         arquivo = ARQUIVOS.get(caminho)
@@ -115,7 +151,11 @@ class Handler(BaseHTTPRequestHandler):
             if not 0 < tamanho <= 4096:
                 raise ValueError("Tamanho de requisição inválido.")
             corpo = json.loads(self.rfile.read(tamanho))
-            ajustes = validar_ajustes(corpo.get("ajustes"))
+            termicas = validar_termicas(corpo.get("termicas"))
+            ajustes = validar_ajustes(corpo.get("ajustes"), termicas)
+            efeito_fim_mundo = corpo.get("efeito_fim_mundo", False)
+            if not isinstance(efeito_fim_mundo, bool):
+                raise ValueError("Efeito de fim de mundo deve ser verdadeiro ou falso.")
         except (ValueError, KeyError, TypeError, json.JSONDecodeError) as erro:
             self.enviar_json({"error": str(erro)}, 400)
             return
@@ -123,7 +163,7 @@ class Handler(BaseHTTPRequestHandler):
             self.enviar_json({"error": "Otimização em andamento. Aguardando para tentar novamente."}, 409)
             return
         try:
-            self.enviar_json(resposta_despacho(ajustes))
+            self.enviar_json(resposta_despacho(ajustes, termicas, efeito_fim_mundo))
         except Exception as erro:
             self.enviar_json({"error": f"Falha na otimização: {erro}"}, 500)
         finally:

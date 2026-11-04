@@ -14,9 +14,14 @@ const state = {
   pending: false,
   version: 0,
   visible: {},
+  chartZoom: null,
+  thermalOptions: [],
+  selectedThermals: [],
+  defaultThermals: [],
+  limits: {},
 };
 
-const controlGroups = [
+const baseControlGroups = [
   {
     title: 'Sistema',
     subtitle: 'Demanda e penalidade de atendimento',
@@ -40,24 +45,6 @@ const controlGroups = [
     ],
   },
   {
-    title: 'Angra 1',
-    subtitle: 'Usina termelétrica',
-    controls: [
-      ['cvu_angra1', 'Custo variável', 'Multiplicador do custo variável unitário.'],
-      ['ton_angra1', 'Ton', 'Tempo mínimo ligada, em horas.'],
-      ['toff_angra1', 'Toff', 'Tempo mínimo desligada, em horas.'],
-    ],
-  },
-  {
-    title: 'Baixada Fluminense',
-    subtitle: 'Usina termelétrica',
-    controls: [
-      ['cvu_baixada', 'Custo variável', 'Multiplicador do custo variável unitário.'],
-      ['ton_baixada', 'Ton', 'Tempo mínimo ligada, em horas.'],
-      ['toff_baixada', 'Toff', 'Tempo mínimo desligada, em horas.'],
-    ],
-  },
-  {
     title: 'Premissas do estudo',
     subtitle: 'Limites globais da otimização',
     controls: [
@@ -72,10 +59,13 @@ const chartModes = {
     ['Demanda', (row) => row.demanda, '#17231e'],
     ['Furnas', (row) => row.gh_FURNAS, '#2b8cad'],
     ['Moraes', (row) => row.gh_MORAES, '#70b794'],
-    ['Angra 1', (row) => row.gt_ANGRA1, '#dc7040'],
-    ['Baixada', (row) => row.gt_BAIXADA, '#d9aa43'],
   ],
   cmo: [['CMO', (row) => row.cmo, '#194d3b']],
+  deficit: [['Déficit', (row) => row.deficit, '#b33a3a']],
+  inflow: [
+    ['Furnas', (row) => row.afluencia_FURNAS, '#2b8cad'],
+    ['Moraes', (row) => row.afluencia_MORAES, '#70b794'],
+  ],
   volume: [
     ['Furnas', (row) => row.V_FURNAS, '#2b8cad'],
     ['Moraes', (row) => row.V_MORAES, '#70b794'],
@@ -89,6 +79,47 @@ const chartModes = {
     ['Moraes', (row) => row.s_MORAES, '#70b794'],
   ],
 };
+
+const thermalColors = ['#dc7040', '#d9aa43'];
+
+function thermalOption(id) {
+  return state.thermalOptions.find((option) => option.id === id);
+}
+
+function thermalKey(prefix, id) {
+  return `${prefix}_${id.toLowerCase()}`;
+}
+
+function thermalLabel(id) {
+  const option = thermalOption(id);
+  return `${option.nome} · UG ${option.unidade}`;
+}
+
+function controlGroups() {
+  const premises = baseControlGroups[baseControlGroups.length - 1];
+  const fixed = baseControlGroups.slice(0, -1);
+  const thermalGroups = state.selectedThermals.map((id) => ({
+    title: thermalLabel(id),
+    subtitle: 'Usina termelétrica selecionada',
+    controls: [
+      [thermalKey('cvu', id), 'Custo', 'Multiplicador do custo variável unitário.'],
+      [thermalKey('ton', id), 'Ton', 'Tempo mínimo ligada, em horas.'],
+      [thermalKey('toff', id), 'Toff', 'Tempo mínimo desligada, em horas.'],
+    ],
+  }));
+  return [...fixed, ...thermalGroups, premises];
+}
+
+function generationSeries() {
+  return [
+    ['Demanda', (row) => row.demanda, '#17231e'],
+    ['Furnas', (row) => row.gh_FURNAS, '#2b8cad'],
+    ['Moraes', (row) => row.gh_MORAES, '#70b794'],
+    ...state.selectedThermals.map((id, index) => [
+      thermalLabel(id), (row) => row[`gt_${id}`], thermalColors[index],
+    ]),
+  ];
+}
 
 function formatNumber(value, digits = 2) {
   return Number(value).toLocaleString('pt-BR', {
@@ -135,6 +166,10 @@ function isTimeControl(key) {
 function displayControlValue(key, value) {
   if (key === 'custo_vertimento') return `R$ ${formatNumber(value, 2)}/hm³`;
   if (isTimeControl(key)) return `${formatNumber(value, 1)} h`;
+  if (key.startsWith('cvu_ute_')) {
+    const option = thermalOption(key.slice(4).toUpperCase());
+    return `R$ ${formatNumber(option.cvu * value, 2)}/MWh`;
+  }
   return `${formatNumber(value * 100, 0)}%`;
 }
 
@@ -162,7 +197,8 @@ function controlHtml(key, label, help, limits) {
 }
 
 function drawControls(limits) {
-  $('controls').innerHTML = controlGroups.map((group, index) => `
+  const groups = controlGroups();
+  $('controls').innerHTML = groups.map((group, index) => `
     <details class="control-group" ${index === 0 ? 'open' : ''}>
       <summary>
         <span><b>${group.title}</b><small>${group.subtitle}</small></span>
@@ -173,7 +209,7 @@ function drawControls(limits) {
       </div>
     </details>`).join('');
 
-  controlGroups.flatMap((group) => group.controls).forEach(([key]) => {
+  groups.flatMap((group) => group.controls).forEach(([key]) => {
     const input = $(key);
     input.value = state.values[key];
     input.addEventListener('input', () => {
@@ -194,13 +230,41 @@ function updateControl(key) {
 }
 
 function resetControls() {
+  state.selectedThermals = [...state.defaultThermals];
+  state.visible.generation = null;
+  $('end-effect').checked = false;
   state.values = {...state.defaults};
-  controlGroups.flatMap((group) => group.controls).forEach(([key]) => {
-    $(key).value = state.values[key];
-    updateControl(key);
-  });
+  configureThermalControls(false);
   state.version += 1;
   scheduleRun(true);
+}
+
+function configureThermalControls(useDeckDefaults = true) {
+  const baseKeys = Object.keys(state.defaults).filter((key) =>
+    !key.startsWith('cvu_ute_') && !key.startsWith('ton_ute_') && !key.startsWith('toff_ute_'));
+  state.values = Object.fromEntries(baseKeys.map((key) => [key, state.values[key] ?? state.defaults[key]]));
+  state.limits = Object.fromEntries(baseKeys.map((key) => [key, state.limits[key]]));
+
+  state.selectedThermals.forEach((id) => {
+    const option = thermalOption(id);
+    const defaults = {cvu: 1, ton: option.ton_h, toff: option.toff_h};
+    Object.entries(defaults).forEach(([prefix, defaultValue]) => {
+      const key = thermalKey(prefix, id);
+      if (useDeckDefaults || state.values[key] === undefined) state.values[key] = defaultValue;
+      state.limits[key] = prefix === 'cvu'
+        ? [0.5, 1.5]
+        : [0, Math.max(336, defaultValue)];
+    });
+  });
+  $('selected-utes').textContent = state.selectedThermals.map(thermalLabel).join(' · ');
+  drawControls(state.limits);
+}
+
+function populateThermalPicker() {
+  const options = state.thermalOptions.map((option) =>
+    `<option value="${option.id}">${escapeHtml(option.rotulo)}</option>`).join('');
+  $('ute-choice-1').innerHTML = options;
+  $('ute-choice-2').innerHTML = options;
 }
 
 // -----------------------------------------------------------------------------
@@ -235,7 +299,11 @@ async function executeDispatch() {
     const result = await requestJson('/api/dispatch', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ajustes: values}),
+      body: JSON.stringify({
+        ajustes: values,
+        termicas: state.selectedThermals,
+        efeito_fim_mundo: $('end-effect').checked,
+      }),
     });
 
     if (requestedVersion === state.version) {
@@ -298,8 +366,13 @@ function renderPeriod() {
   setText('moraes-gen', row.gh_MORAES);
   setText('moraes-q', row.q_MORAES);
   setText('moraes-v', row.V_MORAES);
-  setText('angra-gen', row.gt_ANGRA1, ' MW');
-  setText('baixada-gen', row.gt_BAIXADA, ' MW');
+  $('period-stats').innerHTML = [
+    ...state.selectedThermals.map((id) =>
+      `<div>${escapeHtml(thermalLabel(id))}<b>${formatNumber(row[`gt_${id}`])} MW</b></div>`),
+    `<div>Demanda<b id="period-demand">—</b></div>`,
+    `<div>Déficit<b id="period-deficit">—</b></div>`,
+    `<div>CMO<b id="period-cmo">—</b></div>`,
+  ].join('');
   setText('period-demand', row.demanda, ' MW');
   setText('period-deficit', row.deficit, ' MW');
   setText('period-cmo', row.cmo, ' R$/MWh');
@@ -313,12 +386,18 @@ function renderTable() {
   if (!state.rows) return;
   const day = Number($('day').value || 0);
   const start = day * 48;
+  $('results-head').innerHTML = [
+    '<th>Início</th><th>Demanda<br>MW</th><th>Furnas<br>MW</th><th>Moraes<br>MW</th>',
+    ...state.selectedThermals.map((id) => `<th>${escapeHtml(thermalLabel(id))}<br>MW</th>`),
+    '<th>Déficit<br>MW</th><th>CMO<br>R$/MWh</th>',
+  ].join('');
   $('rows').innerHTML = state.rows.slice(start, start + 48).map((row, index) => `
     <tr data-index="${start + index}" class="${start + index === state.period ? 'active' : ''}">
       <td>${escapeHtml(row.inicio.slice(11))}</td>
       <td>${formatNumber(row.demanda)}</td><td>${formatNumber(row.gh_FURNAS)}</td>
-      <td>${formatNumber(row.gh_MORAES)}</td><td>${formatNumber(row.gt_ANGRA1)}</td>
-      <td>${formatNumber(row.gt_BAIXADA)}</td><td>${formatNumber(row.deficit)}</td>
+      <td>${formatNumber(row.gh_MORAES)}</td>
+      ${state.selectedThermals.map((id) => `<td>${formatNumber(row[`gt_${id}`])}</td>`).join('')}
+      <td>${formatNumber(row.deficit)}</td>
       <td>${formatNumber(row.cmo)}</td>
     </tr>`).join('');
 
@@ -335,71 +414,150 @@ function renderTable() {
 // Gráfico temporal
 // -----------------------------------------------------------------------------
 function fillChartPeriods() {
-  if ($('chart-period').options.length > 1) return;
-  $('chart-period').innerHTML = '<option value="all">Todos os períodos</option>' + state.rows.map((row, index) =>
-    `<option value="${index}">P${String(row.t).padStart(3, '0')} · ${escapeHtml(row.inicio.slice(5))}</option>`
-  ).join('');
+  const firstDate = state.rows[0].inicio.slice(0, 10);
+  const lastDate = state.rows[state.rows.length - 1].inicio.slice(0, 10);
+  ['chart-start', 'chart-end'].forEach((id) => {
+    $(id).min = firstDate;
+    $(id).max = lastDate;
+  });
+  if (!$('chart-start').value) $('chart-start').value = firstDate;
+  if (!$('chart-end').value) $('chart-end').value = lastDate;
 }
 
 function selectedChartRows() {
-  const selection = $('chart-period').value;
-  if (selection === 'all') return state.rows.map((row, index) => ({row, index}));
-  const index = Number(selection);
-  return [{row: state.rows[index], index}];
+  const start = $('chart-start').value;
+  const end = $('chart-end').value;
+  const filtered = state.rows.map((row, index) => ({row, index}))
+    .filter(({row}) => row.inicio.slice(0, 10) >= start && row.inicio.slice(0, 10) <= end);
+  if (!state.chartZoom || filtered.length < 2) return filtered;
+  const zoomStart = Math.max(0, Math.min(state.chartZoom.start, filtered.length - 1));
+  const zoomEnd = Math.max(zoomStart + 1, Math.min(state.chartZoom.end, filtered.length));
+  return filtered.slice(zoomStart, zoomEnd);
+}
+
+function resetChartZoom() {
+  state.chartZoom = null;
+  $('zoom-reset').textContent = '100%';
+}
+
+function changeChartZoom(factor, anchorRatio = 0.5) {
+  if (!state.rows) return;
+  const start = $('chart-start').value;
+  const end = $('chart-end').value;
+  const total = state.rows.filter((row) => row.inicio.slice(0, 10) >= start && row.inicio.slice(0, 10) <= end).length;
+  if (total < 3) return;
+  const currentStart = state.chartZoom?.start ?? 0;
+  const currentEnd = state.chartZoom?.end ?? total;
+  const currentSize = currentEnd - currentStart;
+  const newSize = Math.max(2, Math.min(total, Math.round(currentSize * factor)));
+  const anchor = currentStart + currentSize * anchorRatio;
+  let newStart = Math.round(anchor - newSize * anchorRatio);
+  newStart = Math.max(0, Math.min(total - newSize, newStart));
+  state.chartZoom = newSize === total ? null : {start: newStart, end: newStart + newSize};
+  $('zoom-reset').textContent = state.chartZoom ? `${Math.round(total / newSize * 100)}%` : '100%';
+  renderChart();
+}
+
+function updateChartDateRange() {
+  if (!state.rows) return;
+  if ($('chart-start').value > $('chart-end').value) {
+    showToast('A data inicial deve ser anterior ou igual à data final.');
+    return;
+  }
+  resetChartZoom();
+  renderChart();
 }
 
 function renderChart() {
   if (!state.rows) return;
 
   const mode = $('chart-mode').value;
-  const available = chartModes[mode];
+  const available = mode === 'generation' ? generationSeries() : chartModes[mode];
   const selected = state.visible[mode] ?? new Set(available.map(([name]) => name));
   state.visible[mode] = selected;
   const series = available.filter(([name]) => selected.has(name));
   const points = selectedChartRows();
   const rows = points.map(({row}) => row);
+  if (!rows.length) return;
 
   const fullscreen = document.fullscreenElement === $('chart-panel');
   const width = Math.max(640, Math.round($('chart').clientWidth || 940));
   const height = fullscreen ? Math.max(420, window.innerHeight - 185) : 290;
+  const independentAxes = mode === 'volume' || mode === 'inflow';
   const left = 55;
-  const right = 15;
+  const right = independentAxes && series.length > 1 ? 70 : 15;
   const top = 18;
   const bottom = 35;
   $('chart').style.setProperty('--chart-height', `${height}px`);
 
   const values = series.flatMap(([, valueOf]) => rows.map(valueOf));
-  const minimum = Math.min(0, ...values);
-  const maximum = Math.max(1, ...values);
+  const paddedRange = (rangeValues) => {
+    if (!rangeValues.length) return {minimum: 0, maximum: 1};
+    const observedMinimum = Math.min(...rangeValues);
+    const observedMaximum = Math.max(...rangeValues);
+    const padding = Math.max(
+      (observedMaximum - observedMinimum) * 0.08,
+      Math.max(Math.abs(observedMinimum), Math.abs(observedMaximum)) * 0.01,
+      0.01,
+    );
+    return {
+      minimum: observedMinimum >= 0 ? Math.max(0, observedMinimum - padding) : observedMinimum - padding,
+      maximum: observedMaximum + padding,
+    };
+  };
+  const overallRange = paddedRange(values);
+  const minimum = overallRange.minimum;
+  const maximum = overallRange.maximum;
   const span = maximum - minimum;
+  const axisRanges = independentAxes
+    ? series.map(([, valueOf]) => paddedRange(rows.map(valueOf)))
+    : [];
   const x = (index) => rows.length === 1
     ? left + (width - left - right) / 2
     : left + index * (width - left - right) / (rows.length - 1);
-  const y = (value) => top + (maximum - value) * (height - top - bottom) / span;
+  const y = (value, seriesIndex = 0) => {
+    if (!independentAxes) return top + (maximum - value) * (height - top - bottom) / span;
+    const range = axisRanges[seriesIndex];
+    return top + (range.maximum - value) * (height - top - bottom) / (range.maximum - range.minimum);
+  };
 
   let svg = `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" aria-label="Série temporal">`;
   svg += `<rect x="0" y="0" width="${width}" height="${height}" fill="transparent"/>`;
 
   for (let line = 0; line <= 4; line += 1) {
-    const value = minimum + span * line / 4;
-    const position = y(value);
+    const position = height - bottom - line * (height - top - bottom) / 4;
     svg += `<line x1="${left}" y1="${position}" x2="${width - right}" y2="${position}" stroke="#e2e6df"/>`;
-    svg += `<text x="${left - 7}" y="${position + 4}" text-anchor="end" fill="#68746e" font-size="11">${formatNumber(value, 0)}</text>`;
-  }
-
-  if (rows.length === 1) {
-    svg += `<text x="${x(0)}" y="${height - 9}" text-anchor="middle" fill="#68746e" font-size="11">${escapeHtml(rows[0].inicio.slice(5))}</text>`;
-  } else {
-    for (let index = 0; index < rows.length; index += 48) {
-      svg += `<line x1="${x(index)}" y1="${top}" x2="${x(index)}" y2="${height - bottom}" stroke="#e2e6df"/>`;
-      svg += `<text x="${x(index)}" y="${height - 9}" text-anchor="middle" fill="#68746e" font-size="11">${rows[index].inicio.slice(8, 10)}/${rows[index].inicio.slice(5, 7)}</text>`;
+    if (independentAxes && axisRanges.length) {
+      const leftValue = axisRanges[0].minimum + (axisRanges[0].maximum - axisRanges[0].minimum) * line / 4;
+      svg += `<text x="${left - 7}" y="${position + 4}" text-anchor="end" fill="${series[0][2]}" font-size="12">${formatNumber(leftValue, 1)}</text>`;
+      if (axisRanges[1]) {
+        const rightValue = axisRanges[1].minimum + (axisRanges[1].maximum - axisRanges[1].minimum) * line / 4;
+        svg += `<text x="${width - right + 7}" y="${position + 4}" text-anchor="start" fill="${series[1][2]}" font-size="12">${formatNumber(rightValue, 1)}</text>`;
+      }
+    } else {
+      const value = minimum + span * line / 4;
+      svg += `<text x="${left - 7}" y="${position + 4}" text-anchor="end" fill="#68746e" font-size="12">${formatNumber(value, 0)}</text>`;
     }
   }
 
-  series.forEach(([, valueOf, color]) => {
-    const coordinates = rows.map((row, index) => `${x(index).toFixed(1)},${y(valueOf(row)).toFixed(1)}`).join(' ');
+  if (rows.length === 1) {
+    svg += `<text x="${x(0)}" y="${height - 9}" text-anchor="middle" fill="#68746e" font-size="12">${escapeHtml(rows[0].inicio.slice(5))}</text>`;
+  } else {
+    for (let index = 0; index < rows.length; index += 48) {
+      svg += `<line x1="${x(index)}" y1="${top}" x2="${x(index)}" y2="${height - bottom}" stroke="#e2e6df"/>`;
+      svg += `<text x="${x(index)}" y="${height - 9}" text-anchor="middle" fill="#68746e" font-size="12">${rows[index].inicio.slice(8, 10)}/${rows[index].inicio.slice(5, 7)}</text>`;
+    }
+  }
+
+  series.forEach(([name, valueOf, color], seriesIndex) => {
+    const coordinates = rows.map((row, index) => `${x(index).toFixed(1)},${y(valueOf(row), seriesIndex).toFixed(1)}`).join(' ');
     svg += `<polyline points="${coordinates}" fill="none" stroke="${color}" stroke-width="2.2" vector-effect="non-scaling-stroke"/>`;
-    if (rows.length === 1) svg += `<circle cx="${x(0)}" cy="${y(valueOf(rows[0]))}" r="5" fill="${color}"/>`;
+    if (rows.length === 1) svg += `<circle cx="${x(0)}" cy="${y(valueOf(rows[0]), seriesIndex)}" r="5" fill="${color}"/>`;
+    if (mode === 'volume' && points[points.length - 1].index === state.rows.length - 1) {
+      const finalValue = valueOf(rows[rows.length - 1]);
+      svg += `<circle cx="${x(rows.length - 1)}" cy="${y(finalValue, seriesIndex)}" r="4" fill="${color}"/>`;
+      svg += `<text x="${x(rows.length - 1) - 8}" y="${y(finalValue, seriesIndex) - 7}" text-anchor="end" fill="${color}" font-size="12">${escapeHtml(name)}: ${formatNumber(finalValue)} hm³</text>`;
+    }
   });
 
   const focusedPoint = points.findIndex(({index}) => index === state.period);
@@ -408,10 +566,13 @@ function renderChart() {
   svg += `<rect id="chart-hit" x="${left}" y="${top}" width="${width - left - right}" height="${height - top - bottom}" fill="transparent"></svg>`;
   $('chart').innerHTML = `${svg}<div class="tooltip" id="tooltip"></div>`;
 
-  $('legend').innerHTML = available.map(([name, , color], index) => `
+  const finalRow = state.rows[state.rows.length - 1];
+  $('legend').innerHTML = available.map(([name, valueOf, color], index) => `
     <label>
       <input type="checkbox" data-curve="${index}" ${selected.has(name) ? 'checked' : ''}>
-      <i style="background:${color}"></i><span>${name}</span>
+      <i style="background:${color}"></i><span>${name}${mode === 'volume'
+        ? ` · final: ${formatNumber(valueOf(finalRow))} hm³`
+        : ''}</span>
     </label>`).join('');
 
   document.querySelectorAll('[data-curve]').forEach((input) => {
@@ -426,13 +587,22 @@ function renderChart() {
   hitArea.onmousemove = (event) => showChartTooltip(event, points, series, width, x);
   hitArea.onmouseleave = () => {$('tooltip').style.display = 'none';};
   hitArea.onclick = (event) => selectChartPoint(event, points, width);
+  hitArea.onwheel = (event) => {
+    event.preventDefault();
+    const bounds = $('chart').getBoundingClientRect();
+    const anchorRatio = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width));
+    changeChartZoom(event.deltaY < 0 ? 0.7 : 1.4, anchorRatio);
+  };
+  hitArea.ondblclick = () => { resetChartZoom(); renderChart(); };
 }
 
 function chartPointAt(event, pointCount, width) {
   if (pointCount === 1) return 0;
   const bounds = $('chart').getBoundingClientRect();
   const left = 55;
-  const right = 15;
+  const mode = $('chart-mode').value;
+  const independentAxes = mode === 'volume' || mode === 'inflow';
+  const right = independentAxes && (state.visible[mode]?.size ?? 2) > 1 ? 70 : 15;
   return Math.max(0, Math.min(pointCount - 1, Math.round(
     ((event.clientX - bounds.left) / bounds.width * width - left) / (width - left - right) * (pointCount - 1)
   )));
@@ -490,9 +660,32 @@ function toggleParameterPanel() {
 $('run').onclick = () => scheduleRun(true);
 $('reset').onclick = resetControls;
 $('collapse-params').onclick = toggleParameterPanel;
+$('choose-utes').onclick = () => {
+  $('ute-choice-1').value = state.selectedThermals[0];
+  $('ute-choice-2').value = state.selectedThermals[1];
+  $('ute-dialog').showModal();
+};
+$('apply-utes').onclick = (event) => {
+  event.preventDefault();
+  const selected = [$('ute-choice-1').value, $('ute-choice-2').value];
+  if (selected[0] === selected[1]) {
+    showToast('Selecione duas UTEs diferentes.');
+    return;
+  }
+  state.selectedThermals = selected;
+  state.visible.generation = null;
+  configureThermalControls(true);
+  state.version += 1;
+  $('ute-dialog').close();
+  scheduleRun();
+};
 $('auto-run').onchange = () => $('auto-run').checked
   ? scheduleRun(true)
   : setStatus('Recálculo pausado', 'Use Executar otimização para aplicar ajustes.', 'pending');
+$('end-effect').onchange = () => {
+  state.version += 1;
+  scheduleRun();
+};
 $('period').oninput = (event) => {
   state.period = Number(event.target.value) - 1;
   renderPeriod();
@@ -500,14 +693,11 @@ $('period').oninput = (event) => {
   renderChart();
 };
 $('chart-mode').onchange = renderChart;
-$('chart-period').onchange = () => {
-  if ($('chart-period').value !== 'all') {
-    state.period = Number($('chart-period').value);
-    renderPeriod();
-    renderTable();
-  }
-  renderChart();
-};
+$('chart-start').onchange = updateChartDateRange;
+$('chart-end').onchange = updateChartDateRange;
+$('zoom-in').onclick = () => changeChartZoom(0.7);
+$('zoom-out').onclick = () => changeChartZoom(1.4);
+$('zoom-reset').onclick = () => { resetChartZoom(); renderChart(); };
 $('day').onchange = renderTable;
 $('download').onclick = downloadCsv;
 $('fullscreen').onclick = async () => {
@@ -534,7 +724,12 @@ async function initialize() {
     const config = await requestJson('/api/config');
     state.defaults = config.ajustes;
     state.values = {...config.ajustes};
-    drawControls(config.limites);
+    state.limits = {...config.limites};
+    state.thermalOptions = config.termicas;
+    state.defaultThermals = [...config.termicas_padrao];
+    state.selectedThermals = [...config.termicas_padrao];
+    populateThermalPicker();
+    configureThermalControls(false);
     $('period').max = config.periodos;
 
     const initialDate = new Date(`${config.inicio}Z`);

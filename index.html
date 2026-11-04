@@ -19,8 +19,8 @@
     <section class="hero">
       <div>
         <small>DESPACHO HIDROTÉRMICO · BARRA ÚNICA</small>
-        <h1>Da água à decisão,<br><i>meia hora por meia hora.</i></h1>
-        <p>Explore o despacho de Furnas, Mascarenhas de Moraes, Angra 1 e Baixada Fluminense. Cada ajuste recalcula o mesmo modelo de otimização.</p>
+        <h1>Da água à decisão</h1>
+        <p>Explore o despacho hidrotérmico com dados reais do SIN</p>
       </div>
       <div class="actions">
         <button id="reset" type="button">Restaurar padrão</button>
@@ -41,8 +41,11 @@
             <div><b id="status-title">Preparando cenário</b><small id="status-text">Conectando ao servidor…</small></div>
           </div>
           <label class="auto"><input id="auto-run" type="checkbox" checked> Reotimizar após alterações</label>
-          <h2>Entradas do cenário</h2>
-          <p class="muted">Os controles estão separados por sistema e usina. Os arquivos do deck permanecem intactos.</p>
+          <label class="auto end-effect"><input id="end-effect" type="checkbox"> Efeito de fim de mundo</label>
+          <h2>Entradas do caso</h2>
+          <p class="muted"></p>
+          <button id="choose-utes" class="ute-picker-button" type="button">Escolher UTEs</button>
+          <small id="selected-utes" class="selected-utes">Angra 1 · Baixada Fluminense</small>
           <div id="controls"></div>
           <div class="aside-foot"><small>HORIZONTE</small><b>336 períodos · 30 min</b><p>Dados: PySDDP · Otimizador: PySCIPOpt</p></div>
         </div>
@@ -64,15 +67,21 @@
             <span>ÁGUA LIBERADA →</span>
             <article><small>02 · JUSANTE</small><h3>Mascarenhas de Moraes</h3><strong id="moraes-gen">—</strong> MW<div>Vazão <b id="moraes-q">—</b> m³/s · Volume <b id="moraes-v">—</b> hm³</div></article>
           </div>
-          <div class="period-stats"><div>Angra 1<b id="angra-gen">—</b></div><div>Baixada<b id="baixada-gen">—</b></div><div>Demanda<b id="period-demand">—</b></div><div>Déficit<b id="period-deficit">—</b></div><div>CMO<b id="period-cmo">—</b></div></div>
+          <div id="period-stats" class="period-stats"></div>
         </section>
 
         <section id="chart-panel" class="panel chart-panel">
           <div class="title">
-            <div><small>ANÁLISE TEMPORAL</small><h2>Evolução do despacho</h2></div>
+            <h2 class="chart-heading">Evolução do Despacho</h2>
             <div class="chart-actions">
-              <label>Variável<select id="chart-mode" aria-label="Variável do gráfico"><option value="generation">Geração e demanda</option><option value="cmo">CMO</option><option value="volume">Volumes</option><option value="flow">Vazões turbinadas</option><option value="spill">Vertimentos</option></select></label>
-              <label>Período<select id="chart-period" aria-label="Período exibido no gráfico"><option value="all">Todos os períodos</option></select></label>
+              <label>Variável<select id="chart-mode" aria-label="Variável do gráfico"><option value="generation">Geração e demanda</option><option value="cmo">CMO</option><option value="volume">Volumes</option><option value="deficit">Déficit</option><option value="inflow">Afluências</option><option value="flow">Vazões turbinadas</option><option value="spill">Vertimentos</option></select></label>
+              <label>Início<input id="chart-start" type="date" aria-label="Data inicial do gráfico"></label>
+              <label>Fim<input id="chart-end" type="date" aria-label="Data final do gráfico"></label>
+              <div class="zoom-actions" aria-label="Controles de zoom do gráfico">
+                <button id="zoom-out" type="button" title="Diminuir zoom" aria-label="Diminuir zoom">−</button>
+                <button id="zoom-reset" type="button" title="Restaurar zoom">100%</button>
+                <button id="zoom-in" type="button" title="Aumentar zoom" aria-label="Aumentar zoom">+</button>
+              </div>
               <button id="fullscreen" type="button" aria-pressed="false">Tela cheia ↗</button>
             </div>
           </div>
@@ -82,13 +91,22 @@
 
         <section class="panel">
           <div class="title"><div><small>DETALHAMENTO</small><h2>Resultados por meia hora</h2></div><div class="table-actions"><select id="day" aria-label="Dia da tabela"></select><button id="download" type="button" disabled>Baixar CSV ↓</button></div></div>
-          <div class="table-wrap"><table><thead><tr><th>Início</th><th>Demanda<br>MW</th><th>Furnas<br>MW</th><th>Moraes<br>MW</th><th>Angra 1<br>MW</th><th>Baixada<br>MW</th><th>Déficit<br>MW</th><th>CMO<br>R$/MWh</th></tr></thead><tbody id="rows"><tr><td colspan="8">Aguardando otimização…</td></tr></tbody></table></div>
+          <div class="table-wrap"><table><thead><tr id="results-head"></tr></thead><tbody id="rows"><tr><td colspan="8">Aguardando otimização…</td></tr></tbody></table></div>
         </section>
       </div>
     </div>
   </main>
 
   <div id="toast" role="alert" aria-live="assertive"></div>
+  <dialog id="ute-dialog" class="ute-dialog">
+    <form method="dialog">
+      <div class="title"><div><small>PARQUE TÉRMICO</small><h2>Escolha duas UTEs</h2></div><button value="cancel" aria-label="Fechar">×</button></div>
+      <p>As opções abaixo foram lidas do deck DESSEM pelo PySDDP.</p>
+      <label>Primeira UTE<select id="ute-choice-1"></select></label>
+      <label>Segunda UTE<select id="ute-choice-2"></select></label>
+      <div class="dialog-actions"><button value="cancel">Cancelar</button><button id="apply-utes" class="primary" value="apply">Aplicar seleção</button></div>
+    </form>
+  </dialog>
   <script src="app.js"></script>
 </body>
 </html>
