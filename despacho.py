@@ -38,7 +38,8 @@ AJUSTES_PADRAO = {
 }
 
 
-def executar_despacho(ajustes=None, salvar=False, dados_base=None, termicas_selecionadas=None):
+def executar_despacho(ajustes=None, salvar=False, dados_base=None, termicas_selecionadas=None,
+                      efeito_fim_mundo=False):
     """Resolve o mesmo MILP para um cenário; sem ajustes, usa os dados originais."""
     ajustes = {**AJUSTES_PADRAO, **(ajustes or {})}
     # ===================================================================== 1. dados
@@ -177,8 +178,12 @@ def executar_despacho(ajustes=None, salvar=False, dados_base=None, termicas_sele
             m.addCons(q[h, t] + s[h, t] >= uh["defluencia_min"][t - 1])
             if uh["defluencia_max"][t - 1] is not None:
                 m.addCons(q[h, t] + s[h, t] <= uh["defluencia_max"][t - 1])
-        # volume final >= inicial (fica no lugar do corte do DECOMP)
-        m.addCons(V[h, T + 1] >= uh["v0"])
+        # Com o efeito de fim de mundo, a usina deve encerrar o horizonte com
+        # exatamente o estoque inicial. Sem ele, preserva-se a condição anterior.
+        if efeito_fim_mundo:
+            m.addCons(V[h, T + 1] == uh["v0"])
+        else:
+            m.addCons(V[h, T + 1] >= uh["v0"])
 
     # ===================================================================== 5. demanda e objetivo
     atendimento = {}
@@ -215,6 +220,7 @@ def executar_despacho(ajustes=None, salvar=False, dados_base=None, termicas_sele
         resultado[f"gt_{i}"] = [m.getVal(gt[i, t]) for t in PERIODOS]
         resultado[f"u_{i}"] = [round(m.getVal(u[i, t])) for t in PERIODOS]
     for h in hidros:
+        resultado[f"afluencia_{h}"] = hidros[h]["afluencia"]
         resultado[f"q_{h}"] = [m.getVal(q[h, t]) for t in PERIODOS]
         resultado[f"s_{h}"] = [m.getVal(s[h, t]) for t in PERIODOS]
         resultado[f"gh_{h}"] = hidros[h]["rho"] * resultado[f"q_{h}"]
