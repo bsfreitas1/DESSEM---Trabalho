@@ -80,13 +80,14 @@ def validar_ajustes(recebidos, termicas):
     return ajustes
 
 
-def resposta_despacho(ajustes, termicas):
-    chave = termicas + tuple((nome, ajustes[nome]) for nome in sorted(ajustes))
+def resposta_despacho(ajustes, termicas, efeito_fim_mundo=False):
+    chave = termicas + (efeito_fim_mundo,) + tuple((nome, ajustes[nome]) for nome in sorted(ajustes))
     if chave not in CACHE:
         inicio = perf_counter()
         solucao = executar_despacho(
             ajustes=ajustes, salvar=False, dados_base=DADOS_BASE,
             termicas_selecionadas=termicas,
+            efeito_fim_mundo=efeito_fim_mundo,
         )
         tabela = solucao["resultado"]
         if len(CACHE) >= 12:
@@ -152,6 +153,9 @@ class Handler(BaseHTTPRequestHandler):
             corpo = json.loads(self.rfile.read(tamanho))
             termicas = validar_termicas(corpo.get("termicas"))
             ajustes = validar_ajustes(corpo.get("ajustes"), termicas)
+            efeito_fim_mundo = corpo.get("efeito_fim_mundo", False)
+            if not isinstance(efeito_fim_mundo, bool):
+                raise ValueError("Efeito de fim de mundo deve ser verdadeiro ou falso.")
         except (ValueError, KeyError, TypeError, json.JSONDecodeError) as erro:
             self.enviar_json({"error": str(erro)}, 400)
             return
@@ -159,7 +163,7 @@ class Handler(BaseHTTPRequestHandler):
             self.enviar_json({"error": "Otimização em andamento. Aguardando para tentar novamente."}, 409)
             return
         try:
-            self.enviar_json(resposta_despacho(ajustes, termicas))
+            self.enviar_json(resposta_despacho(ajustes, termicas, efeito_fim_mundo))
         except Exception as erro:
             self.enviar_json({"error": f"Falha na otimização: {erro}"}, 500)
         finally:

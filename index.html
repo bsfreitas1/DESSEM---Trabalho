@@ -41,6 +41,7 @@
             <div><b id="status-title">Preparando cenário</b><small id="status-text">Conectando ao servidor…</small></div>
           </div>
           <label class="auto"><input id="auto-run" type="checkbox" checked> Reotimizar após alterações</label>
+          <label class="auto end-effect"><input id="end-effect" type="checkbox"> Efeito de fim de mundo</label>
           <h2>Entradas do caso</h2>
           <p class="muted"></p>
           <button id="choose-utes" class="ute-picker-button" type="button">Escolher UTEs</button>
@@ -71,9 +72,9 @@
 
         <section id="chart-panel" class="panel chart-panel">
           <div class="title">
-            <div><small>ANÁLISE TEMPORAL</small><h2>Evolução do despacho</h2></div>
+            <h2 class="chart-heading">Evolução do Despacho</h2>
             <div class="chart-actions">
-              <label>Variável<select id="chart-mode" aria-label="Variável do gráfico"><option value="generation">Geração e demanda</option><option value="cmo">CMO</option><option value="volume">Volumes</option><option value="flow">Vazões turbinadas</option><option value="spill">Vertimentos</option></select></label>
+              <label>Variável<select id="chart-mode" aria-label="Variável do gráfico"><option value="generation">Geração e demanda</option><option value="cmo">CMO</option><option value="volume">Volumes</option><option value="deficit">Déficit</option><option value="inflow">Afluências</option><option value="flow">Vazões turbinadas</option><option value="spill">Vertimentos</option></select></label>
               <label>Início<input id="chart-start" type="date" aria-label="Data inicial do gráfico"></label>
               <label>Fim<input id="chart-end" type="date" aria-label="Data final do gráfico"></label>
               <div class="zoom-actions" aria-label="Controles de zoom do gráfico">

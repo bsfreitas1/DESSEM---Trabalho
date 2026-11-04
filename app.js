@@ -61,6 +61,11 @@ const chartModes = {
     ['Moraes', (row) => row.gh_MORAES, '#70b794'],
   ],
   cmo: [['CMO', (row) => row.cmo, '#194d3b']],
+  deficit: [['Déficit', (row) => row.deficit, '#b33a3a']],
+  inflow: [
+    ['Furnas', (row) => row.afluencia_FURNAS, '#2b8cad'],
+    ['Moraes', (row) => row.afluencia_MORAES, '#70b794'],
+  ],
   volume: [
     ['Furnas', (row) => row.V_FURNAS, '#2b8cad'],
     ['Moraes', (row) => row.V_MORAES, '#70b794'],
@@ -161,6 +166,10 @@ function isTimeControl(key) {
 function displayControlValue(key, value) {
   if (key === 'custo_vertimento') return `R$ ${formatNumber(value, 2)}/hm³`;
   if (isTimeControl(key)) return `${formatNumber(value, 1)} h`;
+  if (key.startsWith('cvu_ute_')) {
+    const option = thermalOption(key.slice(4).toUpperCase());
+    return `R$ ${formatNumber(option.cvu * value, 2)}/MWh`;
+  }
   return `${formatNumber(value * 100, 0)}%`;
 }
 
@@ -223,6 +232,7 @@ function updateControl(key) {
 function resetControls() {
   state.selectedThermals = [...state.defaultThermals];
   state.visible.generation = null;
+  $('end-effect').checked = false;
   state.values = {...state.defaults};
   configureThermalControls(false);
   state.version += 1;
@@ -289,7 +299,11 @@ async function executeDispatch() {
     const result = await requestJson('/api/dispatch', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ajustes: values, termicas: state.selectedThermals}),
+      body: JSON.stringify({
+        ajustes: values,
+        termicas: state.selectedThermals,
+        efeito_fim_mundo: $('end-effect').checked,
+      }),
     });
 
     if (requestedVersion === state.version) {
@@ -469,29 +483,61 @@ function renderChart() {
   const fullscreen = document.fullscreenElement === $('chart-panel');
   const width = Math.max(640, Math.round($('chart').clientWidth || 940));
   const height = fullscreen ? Math.max(420, window.innerHeight - 185) : 290;
+  const independentAxes = mode === 'volume' || mode === 'inflow';
   const left = 55;
-  const right = 15;
+  const right = independentAxes && series.length > 1 ? 70 : 15;
   const top = 18;
   const bottom = 35;
   $('chart').style.setProperty('--chart-height', `${height}px`);
 
   const values = series.flatMap(([, valueOf]) => rows.map(valueOf));
-  const minimum = Math.min(0, ...values);
-  const maximum = Math.max(1, ...values);
+  const paddedRange = (rangeValues) => {
+    if (!rangeValues.length) return {minimum: 0, maximum: 1};
+    const observedMinimum = Math.min(...rangeValues);
+    const observedMaximum = Math.max(...rangeValues);
+    const padding = Math.max(
+      (observedMaximum - observedMinimum) * 0.08,
+      Math.max(Math.abs(observedMinimum), Math.abs(observedMaximum)) * 0.01,
+      0.01,
+    );
+    return {
+      minimum: observedMinimum >= 0 ? Math.max(0, observedMinimum - padding) : observedMinimum - padding,
+      maximum: observedMaximum + padding,
+    };
+  };
+  const overallRange = paddedRange(values);
+  const minimum = overallRange.minimum;
+  const maximum = overallRange.maximum;
   const span = maximum - minimum;
+  const axisRanges = independentAxes
+    ? series.map(([, valueOf]) => paddedRange(rows.map(valueOf)))
+    : [];
   const x = (index) => rows.length === 1
     ? left + (width - left - right) / 2
     : left + index * (width - left - right) / (rows.length - 1);
-  const y = (value) => top + (maximum - value) * (height - top - bottom) / span;
+  const y = (value, seriesIndex = 0) => {
+    if (!independentAxes) return top + (maximum - value) * (height - top - bottom) / span;
+    const range = axisRanges[seriesIndex];
+    return top + (range.maximum - value) * (height - top - bottom) / (range.maximum - range.minimum);
+  };
 
   let svg = `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" aria-label="Série temporal">`;
   svg += `<rect x="0" y="0" width="${width}" height="${height}" fill="transparent"/>`;
 
   for (let line = 0; line <= 4; line += 1) {
-    const value = minimum + span * line / 4;
-    const position = y(value);
+    const position = height - bottom - line * (height - top - bottom) / 4;
     svg += `<line x1="${left}" y1="${position}" x2="${width - right}" y2="${position}" stroke="#e2e6df"/>`;
-    svg += `<text x="${left - 7}" y="${position + 4}" text-anchor="end" fill="#68746e" font-size="12">${formatNumber(value, 0)}</text>`;
+    if (independentAxes && axisRanges.length) {
+      const leftValue = axisRanges[0].minimum + (axisRanges[0].maximum - axisRanges[0].minimum) * line / 4;
+      svg += `<text x="${left - 7}" y="${position + 4}" text-anchor="end" fill="${series[0][2]}" font-size="12">${formatNumber(leftValue, 1)}</text>`;
+      if (axisRanges[1]) {
+        const rightValue = axisRanges[1].minimum + (axisRanges[1].maximum - axisRanges[1].minimum) * line / 4;
+        svg += `<text x="${width - right + 7}" y="${position + 4}" text-anchor="start" fill="${series[1][2]}" font-size="12">${formatNumber(rightValue, 1)}</text>`;
+      }
+    } else {
+      const value = minimum + span * line / 4;
+      svg += `<text x="${left - 7}" y="${position + 4}" text-anchor="end" fill="#68746e" font-size="12">${formatNumber(value, 0)}</text>`;
+    }
   }
 
   if (rows.length === 1) {
@@ -503,10 +549,15 @@ function renderChart() {
     }
   }
 
-  series.forEach(([, valueOf, color]) => {
-    const coordinates = rows.map((row, index) => `${x(index).toFixed(1)},${y(valueOf(row)).toFixed(1)}`).join(' ');
+  series.forEach(([name, valueOf, color], seriesIndex) => {
+    const coordinates = rows.map((row, index) => `${x(index).toFixed(1)},${y(valueOf(row), seriesIndex).toFixed(1)}`).join(' ');
     svg += `<polyline points="${coordinates}" fill="none" stroke="${color}" stroke-width="2.2" vector-effect="non-scaling-stroke"/>`;
-    if (rows.length === 1) svg += `<circle cx="${x(0)}" cy="${y(valueOf(rows[0]))}" r="5" fill="${color}"/>`;
+    if (rows.length === 1) svg += `<circle cx="${x(0)}" cy="${y(valueOf(rows[0]), seriesIndex)}" r="5" fill="${color}"/>`;
+    if (mode === 'volume' && points[points.length - 1].index === state.rows.length - 1) {
+      const finalValue = valueOf(rows[rows.length - 1]);
+      svg += `<circle cx="${x(rows.length - 1)}" cy="${y(finalValue, seriesIndex)}" r="4" fill="${color}"/>`;
+      svg += `<text x="${x(rows.length - 1) - 8}" y="${y(finalValue, seriesIndex) - 7}" text-anchor="end" fill="${color}" font-size="12">${escapeHtml(name)}: ${formatNumber(finalValue)} hm³</text>`;
+    }
   });
 
   const focusedPoint = points.findIndex(({index}) => index === state.period);
@@ -515,10 +566,13 @@ function renderChart() {
   svg += `<rect id="chart-hit" x="${left}" y="${top}" width="${width - left - right}" height="${height - top - bottom}" fill="transparent"></svg>`;
   $('chart').innerHTML = `${svg}<div class="tooltip" id="tooltip"></div>`;
 
-  $('legend').innerHTML = available.map(([name, , color], index) => `
+  const finalRow = state.rows[state.rows.length - 1];
+  $('legend').innerHTML = available.map(([name, valueOf, color], index) => `
     <label>
       <input type="checkbox" data-curve="${index}" ${selected.has(name) ? 'checked' : ''}>
-      <i style="background:${color}"></i><span>${name}</span>
+      <i style="background:${color}"></i><span>${name}${mode === 'volume'
+        ? ` · final: ${formatNumber(valueOf(finalRow))} hm³`
+        : ''}</span>
     </label>`).join('');
 
   document.querySelectorAll('[data-curve]').forEach((input) => {
@@ -546,7 +600,9 @@ function chartPointAt(event, pointCount, width) {
   if (pointCount === 1) return 0;
   const bounds = $('chart').getBoundingClientRect();
   const left = 55;
-  const right = 15;
+  const mode = $('chart-mode').value;
+  const independentAxes = mode === 'volume' || mode === 'inflow';
+  const right = independentAxes && (state.visible[mode]?.size ?? 2) > 1 ? 70 : 15;
   return Math.max(0, Math.min(pointCount - 1, Math.round(
     ((event.clientX - bounds.left) / bounds.width * width - left) / (width - left - right) * (pointCount - 1)
   )));
@@ -626,6 +682,10 @@ $('apply-utes').onclick = (event) => {
 $('auto-run').onchange = () => $('auto-run').checked
   ? scheduleRun(true)
   : setStatus('Recálculo pausado', 'Use Executar otimização para aplicar ajustes.', 'pending');
+$('end-effect').onchange = () => {
+  state.version += 1;
+  scheduleRun();
+};
 $('period').oninput = (event) => {
   state.period = Number(event.target.value) - 1;
   renderPeriod();

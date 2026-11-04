@@ -264,6 +264,10 @@ main {
   accent-color: var(--g);
 }
 
+.auto + .auto {
+  margin-top: -7px;
+}
+
 .panel h2 {
   margin: 0;
   font: 28px Georgia, serif;
