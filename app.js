@@ -95,6 +95,22 @@ function thermalLabel(id) {
   return `${option.nome} · UG ${option.unidade}`;
 }
 
+function thermalRampSeries() {
+  const colors = [
+    ['#dc7040', '#f0a178', '#a94b25'],
+    ['#2b8cad', '#75bdd2', '#17637c'],
+  ];
+  return state.selectedThermals.flatMap((id, index) => {
+    const label = thermalLabel(id);
+    const [generationColor, startupColor, shutdownColor] = colors[index];
+    return [
+      [`${label} · geração`, (row) => row[`gt_${id}`], generationColor],
+      [`${label} · acionamento`, (row) => row[`rampa_partida_${id}`], startupColor],
+      [`${label} · desligamento`, (row) => row[`rampa_parada_${id}`], shutdownColor],
+    ];
+  });
+}
+
 function controlGroups() {
   const premises = baseControlGroups[baseControlGroups.length - 1];
   const fixed = baseControlGroups.slice(0, -1);
@@ -232,6 +248,7 @@ function updateControl(key) {
 function resetControls() {
   state.selectedThermals = [...state.defaultThermals];
   state.visible.generation = null;
+  state.visible['thermal-ramp'] = null;
   $('end-effect').checked = false;
   state.values = {...state.defaults};
   configureThermalControls(false);
@@ -472,7 +489,9 @@ function renderChart() {
   if (!state.rows) return;
 
   const mode = $('chart-mode').value;
-  const available = mode === 'generation' ? generationSeries() : chartModes[mode];
+  const available = mode === 'generation'
+    ? generationSeries()
+    : mode === 'thermal-ramp' ? thermalRampSeries() : chartModes[mode];
   const selected = state.visible[mode] ?? new Set(available.map(([name]) => name));
   state.visible[mode] = selected;
   const series = available.filter(([name]) => selected.has(name));
@@ -490,7 +509,8 @@ function renderChart() {
   const bottom = 35;
   $('chart').style.setProperty('--chart-height', `${height}px`);
 
-  const values = series.flatMap(([, valueOf]) => rows.map(valueOf));
+  const finiteValues = (valueOf) => rows.map(valueOf).filter(Number.isFinite);
+  const values = series.flatMap(([, valueOf]) => finiteValues(valueOf));
   const paddedRange = (rangeValues) => {
     if (!rangeValues.length) return {minimum: 0, maximum: 1};
     const observedMinimum = Math.min(...rangeValues);
@@ -510,7 +530,7 @@ function renderChart() {
   const maximum = overallRange.maximum;
   const span = maximum - minimum;
   const axisRanges = independentAxes
-    ? series.map(([, valueOf]) => paddedRange(rows.map(valueOf)))
+    ? series.map(([, valueOf]) => paddedRange(finiteValues(valueOf)))
     : [];
   const x = (index) => rows.length === 1
     ? left + (width - left - right) / 2
@@ -550,9 +570,22 @@ function renderChart() {
   }
 
   series.forEach(([name, valueOf, color], seriesIndex) => {
-    const coordinates = rows.map((row, index) => `${x(index).toFixed(1)},${y(valueOf(row), seriesIndex).toFixed(1)}`).join(' ');
-    svg += `<polyline points="${coordinates}" fill="none" stroke="${color}" stroke-width="2.2" vector-effect="non-scaling-stroke"/>`;
-    if (rows.length === 1) svg += `<circle cx="${x(0)}" cy="${y(valueOf(rows[0]), seriesIndex)}" r="5" fill="${color}"/>`;
+    let segment = [];
+    const drawSegment = () => {
+      if (segment.length > 1) {
+        svg += `<polyline points="${segment.join(' ')}" fill="none" stroke="${color}" stroke-width="2.2" vector-effect="non-scaling-stroke"/>`;
+      } else if (segment.length === 1) {
+        const [cx, cy] = segment[0].split(',');
+        svg += `<circle cx="${cx}" cy="${cy}" r="3.5" fill="${color}"/>`;
+      }
+      segment = [];
+    };
+    rows.forEach((row, index) => {
+      const value = valueOf(row);
+      if (Number.isFinite(value)) segment.push(`${x(index).toFixed(1)},${y(value, seriesIndex).toFixed(1)}`);
+      else drawSegment();
+    });
+    drawSegment();
     if (mode === 'volume' && points[points.length - 1].index === state.rows.length - 1) {
       const finalValue = valueOf(rows[rows.length - 1]);
       svg += `<circle cx="${x(rows.length - 1)}" cy="${y(finalValue, seriesIndex)}" r="4" fill="${color}"/>`;
@@ -618,7 +651,10 @@ function showChartTooltip(event, points, series, width, x) {
   $('tooltip').style.left = `${Math.min(bounds.width - 155, event.clientX - bounds.left + 12)}px`;
   $('tooltip').style.top = '13px';
   const values = series.length
-    ? series.map(([name, valueOf]) => `${escapeHtml(name)}: ${formatNumber(valueOf(row))}`).join('<br>')
+    ? series.map(([name, valueOf]) => {
+      const value = valueOf(row);
+      return `${escapeHtml(name)}: ${Number.isFinite(value) ? formatNumber(value) : '—'}`;
+    }).join('<br>')
     : 'Nenhuma curva selecionada';
   $('tooltip').innerHTML = `${escapeHtml(row.inicio)}<br>${values}`;
 }
@@ -674,6 +710,7 @@ $('apply-utes').onclick = (event) => {
   }
   state.selectedThermals = selected;
   state.visible.generation = null;
+  state.visible['thermal-ramp'] = null;
   configureThermalControls(true);
   state.version += 1;
   $('ute-dialog').close();

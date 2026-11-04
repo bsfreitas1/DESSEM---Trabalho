@@ -1,13 +1,25 @@
 .chart-actions {
   display: flex;
   align-items: end;
+  flex: 1;
+  flex-wrap: wrap;
   gap: 8px;
-  margin-left: auto;
+  margin-left: 0;
 }
 
 .chart-heading {
+  flex: none;
+  margin: -5px 0 0;
   color: var(--g);
   white-space: nowrap;
+}
+
+.chart-panel > .title {
+  align-items: flex-start;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 
 .chart-actions label {
@@ -37,14 +49,32 @@
   letter-spacing: normal;
 }
 
-.zoom-actions { display: flex; }
-.zoom-actions button { min-width: 38px; border-radius: 0; }
+.zoom-actions {
+  display: flex;
+  margin-left: auto;
+}
+.zoom-actions button {
+  min-width: 32px;
+  padding: 6px 7px;
+  border-radius: 0;
+  font-size: 14px;
+  line-height: 1.1;
+}
 .zoom-actions button:first-child { border-radius: 9px 0 0 9px; }
 .zoom-actions button:last-child { border-radius: 0 9px 9px 0; }
 .zoom-actions button + button { margin-left: -1px; }
 
 #zoom-reset {
-  min-width: 62px;
+  min-width: 52px;
+}
+
+#fullscreen {
+  align-self: end;
+  margin-left: 0;
+  padding: 7px 10px;
+  font-size: 15px;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .chart {
