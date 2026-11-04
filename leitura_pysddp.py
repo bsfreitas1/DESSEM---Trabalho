@@ -17,7 +17,7 @@ from PySDDP.dessem.script.rampas import Rampas
 
 
 PASTA_DECK = RAIZ / "DS_CCEE_112026_SEMREDE_RV0D31"
-TERMICAS = {"ANGRA1": (1, 1), "BAIXADA": (211, 3)}
+TERMICAS_PADRAO = ("UTE_1_1", "UTE_211_3")
 HIDRELETRICAS = {"FURNAS": 6, "MORAES": 7}
 MONTANTE_FURNAS = (1, 2, 4)
 MEIAS_HORAS_POR_DIA = 48
@@ -63,6 +63,8 @@ def trajetoria(rampas, usina, unidade, sentido):
             pontos[posicao] = numero(linha["Potencia"])
     if sentido == "D" and pontos[max(pontos)] == 0:
         del pontos[max(pontos)]
+    if not pontos:
+        return []
     valores = []
     for posicao in range(1, max(pontos) + 1):
         valores.append(pontos.get(posicao, valores[-1] if valores else None))
@@ -131,12 +133,31 @@ def ler_dados():
                 for linha in registros(operut.condicoes_iniciais)}
     custos = {(int(linha["us"]), int(linha["un"])): linha
               for linha in registros(operut.limites_condicoes)}
+    sentidos_rampa = {}
+    for linha in registros(rampas.rampas):
+        chave = (int(linha["us"]), int(linha["uni"]))
+        sentidos_rampa.setdefault(chave, set()).add(str(linha["T"]).strip())
+
+    # Apenas unidades completas nos quatro arquivos podem ser escolhidas. O
+    # identificador combina usina e unidade e permanece estÃ¡vel entre API,
+    # modelo e colunas do resultado.
+    chaves_validas = sorted(
+        set(cadastro_termico) & set(iniciais) & set(custos) & set(sentidos_rampa),
+    )
     termicas = {}
-    for nome, chave in TERMICAS.items():
+    for chave in chaves_validas:
+        if not {"A", "D"}.issubset(sentidos_rampa[chave]):
+            continue
         cadastro = cadastro_termico[chave]
         inicial = iniciais[chave]
         operacao = custos[chave]
+        nome = f"UTE_{chave[0]}_{chave[1]}"
+        nome_exibicao = str(inicial["nome"]).strip()
         termicas[nome] = {
+            "nome": nome_exibicao,
+            "codigo_usina": chave[0],
+            "unidade": chave[1],
+            "rotulo": f"{nome_exibicao} · UTE {chave[0]} · UG {chave[1]}",
             "pmax": numero(cadastro["pot"]),
             "pmin": numero(cadastro["ger_min"]),
             "ton_h": numero(cadastro["temp_on"]),

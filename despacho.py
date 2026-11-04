@@ -1,6 +1,6 @@
 """Despacho hidrotérmico reduzido a partir do deck DESSEM D31.
 
-Usinas: Angra 1 e Baixada Fluminense (térmicas); Furnas -> Mascarenhas de Moraes (cascata).
+Usinas: duas térmicas escolhidas no cadastro do deck; Furnas -> Mascarenhas de Moraes (cascata).
 Barra única, 336 meias horas (31/10 a 06/11). Equações da seção 10 do Manual de
 Metodologia do DESSEM.
 
@@ -18,7 +18,7 @@ from pathlib import Path
 import pandas as pd
 from pyscipopt import Model, SCIP_PARAMSETTING, quicksum
 
-from leitura_pysddp import ler_dados
+from leitura_pysddp import TERMICAS_PADRAO, ler_dados
 
 # Premissas definidas para o estudo (não estão no deck)
 DT = 0.5                    # duração de cada período (h)
@@ -33,22 +33,18 @@ AJUSTES_PADRAO = {
     "custo_deficit": 1.0,
     "afluencia_furnas": 1.0,
     "afluencia_moraes": 1.0,
-    "cvu_angra1": 1.0,
-    "cvu_baixada": 1.0,
-    "ton_angra1": 168.0,
-    "toff_angra1": 168.0,
-    "ton_baixada": 72.0,
-    "toff_baixada": 48.0,
     "rampa": FRACAO_RAMPA,
     "custo_vertimento": CUSTO_VERTIMENTO,
 }
 
 
-def executar_despacho(ajustes=None, salvar=False, dados_base=None):
+def executar_despacho(ajustes=None, salvar=False, dados_base=None, termicas_selecionadas=None):
     """Resolve o mesmo MILP para um cenário; sem ajustes, usa os dados originais."""
     ajustes = {**AJUSTES_PADRAO, **(ajustes or {})}
     # ===================================================================== 1. dados
     dados = deepcopy(dados_base) if dados_base is not None else ler_dados()
+    selecionadas = tuple(termicas_selecionadas or TERMICAS_PADRAO)
+    dados["termicas"] = {nome: dados["termicas"][nome] for nome in selecionadas}
     # Ajustes de cenário são aplicados somente aos dados, antes da montagem do modelo.
     dados["demanda_se"] = [valor * ajustes["demanda"] for valor in dados["demanda_se"]]
     dados["custo_deficit"] *= ajustes["custo_deficit"]
@@ -56,10 +52,13 @@ def executar_despacho(ajustes=None, salvar=False, dados_base=None):
         hidro = dados["hidreletricas"][nome]
         hidro["afluencia"] = [valor * ajustes[f"afluencia_{nome.lower()}"]
                                for valor in hidro["afluencia"]]
-    for nome in ("ANGRA1", "BAIXADA"):
-        dados["termicas"][nome]["cvu"] *= ajustes[f"cvu_{nome.lower()}"]
-        dados["termicas"][nome]["ton_h"] = ajustes[f"ton_{nome.lower()}"]
-        dados["termicas"][nome]["toff_h"] = ajustes[f"toff_{nome.lower()}"]
+    for nome in selecionadas:
+        sufixo = nome.lower()
+        dados["termicas"][nome]["cvu"] *= ajustes.get(f"cvu_{sufixo}", 1.0)
+        dados["termicas"][nome]["ton_h"] = ajustes.get(
+            f"ton_{sufixo}", dados["termicas"][nome]["ton_h"])
+        dados["termicas"][nome]["toff_h"] = ajustes.get(
+            f"toff_{sufixo}", dados["termicas"][nome]["toff_h"])
     T = dados["T"]
     PERIODOS = range(1, T + 1)                   # t = 1, ..., 336
     termicas = dados["termicas"]

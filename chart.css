@@ -8,7 +8,7 @@
   display: grid;
   gap: 3px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
 }
@@ -16,12 +16,29 @@
 .chart-actions select {
   min-width: 160px;
   color: var(--ink);
-  font-size: 12px;
+  font-size: 13px;
   letter-spacing: normal;
 }
 
-#chart-period {
-  min-width: 220px;
+.chart-actions input[type="date"] {
+  min-width: 145px;
+  padding: 8px 9px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--card);
+  color: var(--ink);
+  font-size: 13px;
+  letter-spacing: normal;
+}
+
+.zoom-actions { display: flex; }
+.zoom-actions button { min-width: 38px; border-radius: 0; }
+.zoom-actions button:first-child { border-radius: 9px 0 0 9px; }
+.zoom-actions button:last-child { border-radius: 0 9px 9px 0; }
+.zoom-actions button + button { margin-left: -1px; }
+
+#zoom-reset {
+  min-width: 62px;
 }
 
 .chart {
@@ -32,6 +49,7 @@
 .chart svg {
   width: 100%;
   height: 100%;
+  cursor: crosshair;
 }
 
 .legend {
@@ -47,7 +65,7 @@
   border-radius: 8px;
   background: #faf9f4;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   cursor: pointer;
   user-select: none;
@@ -108,7 +126,8 @@
     flex-wrap: wrap;
   }
 
-  .chart-actions select {
+  .chart-actions select,
+  .chart-actions input[type="date"] {
     flex: 1;
   }
 
