@@ -18,7 +18,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--ink);
-  font: 15px/1.5 system-ui, "Segoe UI", sans-serif;
+  font: 14px/1.5 system-ui, "Segoe UI", sans-serif;
 }
 
 button,
@@ -64,7 +64,7 @@ button:disabled {
 
 .topbar b {
   color: var(--g);
-  font: 23px Georgia, serif;
+  font: 20px Georgia, serif;
 }
 
 .topbar b i {
@@ -74,7 +74,7 @@ button:disabled {
 .topbar span {
   margin-left: auto;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.13em;
 }
@@ -84,7 +84,7 @@ button:disabled {
   border-radius: 30px;
   background: #e5f0e9;
   color: var(--g);
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 800;
 }
 
@@ -105,14 +105,14 @@ main {
 .hero small,
 .title > div:first-child > small {
   color: var(--g);
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 800;
   letter-spacing: 0.15em;
 }
 
 .hero h1 {
   margin: 10px 0;
-  font: clamp(38px, 4vw, 58px)/1.02 Georgia, serif;
+  font: clamp(41px, 4vw, 61px)/1.02 Georgia, serif;
   letter-spacing: -0.03em;
 }
 
@@ -171,11 +171,11 @@ main {
   margin-bottom: 14px;
   padding: 8px;
   background: #f4f6f0;
-  font-size: 12px;
+  font-size: 15px;
 }
 
 .collapse-icon {
-  font-size: 20px;
+  font-size: 23px;
   line-height: 1;
 }
 
@@ -241,12 +241,12 @@ main {
 }
 
 .status b {
-  font-size: 13px;
+  font-size: 16px;
 }
 
 .status small {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .auto {
@@ -254,7 +254,7 @@ main {
   align-items: center;
   gap: 8px;
   margin: 15px 0;
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 700;
 }
 
@@ -266,7 +266,7 @@ main {
 
 .panel h2 {
   margin: 0;
-  font: 25px Georgia, serif;
+  font: 28px Georgia, serif;
 }
 
 .parameter-panel h2 {
@@ -276,7 +276,59 @@ main {
 .muted {
   margin: 7px 0 17px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 15px;
+}
+
+.ute-picker-button {
+  width: 100%;
+  border-color: var(--g);
+  background: var(--g-light);
+}
+
+.selected-utes {
+  display: block;
+  margin: 7px 2px 16px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ute-dialog {
+  width: min(620px, calc(100vw - 32px));
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+  color: var(--ink);
+}
+
+.ute-dialog::backdrop {
+  background: #17231e99;
+}
+
+.ute-dialog p {
+  color: var(--muted);
+}
+
+.ute-dialog label {
+  display: grid;
+  gap: 6px;
+  margin: 15px 0;
+  font-weight: 700;
+}
+
+.ute-dialog select {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 22px;
 }
 
 .control-group {
@@ -308,19 +360,19 @@ main {
 }
 
 .control-group summary b {
-  font-size: 13px;
+  font-size: 16px;
 }
 
 .control-group summary small {
   margin-top: 2px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 400;
 }
 
 .control-group summary i {
   color: var(--g);
-  font-size: 18px;
+  font-size: 21px;
   font-style: normal;
   transition: transform 0.2s ease;
 }
@@ -354,13 +406,13 @@ main {
 }
 
 .control label {
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 700;
 }
 
 .control output {
   color: var(--g);
-  font: 16px Georgia, serif;
+  font: 19px Georgia, serif;
   white-space: nowrap;
 }
 
@@ -399,7 +451,7 @@ main {
 .control small {
   display: block;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .control .scale {
@@ -421,26 +473,35 @@ main {
 
 .aside-foot small {
   color: var(--g);
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 800;
   letter-spacing: 0.1em;
 }
 
 .aside-foot b {
   margin: 5px 0;
-  font: 18px Georgia, serif;
+  font: 21px Georgia, serif;
 }
 
 .aside-foot p {
   margin: 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .content {
   display: grid;
   min-width: 0;
   gap: 18px;
+  font-size: 16px;
+}
+
+.content .panel h2 {
+  font-size: 26px;
+}
+
+.content .title > div:first-child > small {
+  font-size: 12px;
 }
 
 .metrics {
@@ -465,20 +526,20 @@ main {
 
 .metrics small {
   color: var(--g);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.1em;
 }
 
 .metrics b {
   margin: 8px 0 2px;
-  font: clamp(21px, 2vw, 31px) Georgia, serif;
+  font: clamp(22px, 2vw, 32px) Georgia, serif;
   white-space: nowrap;
 }
 
 .metrics span {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .title {
@@ -494,20 +555,20 @@ main {
   border-radius: 30px;
   background: #e8f2ed;
   color: var(--g);
-  font-size: 12px;
+  font-size: 13px;
   white-space: nowrap;
 }
 
 .period-control {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 
 .period-control > span {
   display: block;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.07em;
 }
 
@@ -533,19 +594,19 @@ main {
 
 .cascade article small {
   color: var(--g);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.12em;
 }
 
 .cascade article h3 {
   margin: 4px 0;
-  font: 22px Georgia, serif;
+  font: 23px Georgia, serif;
 }
 
 .cascade article strong {
   color: var(--g);
-  font: 30px Georgia, serif;
+  font: 31px Georgia, serif;
 }
 
 .cascade article div {
@@ -553,7 +614,7 @@ main {
   padding-top: 9px;
   border-top: 1px solid #c9ded3;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .cascade article div b {
@@ -562,7 +623,7 @@ main {
 
 .cascade > span {
   color: var(--b);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   white-space: nowrap;
 }
@@ -579,13 +640,13 @@ main {
   border-radius: 8px;
   background: #faf7f0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .period-stats b {
   display: block;
   color: var(--ink);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .title select,
@@ -615,7 +676,7 @@ main {
   border-radius: 7px;
   background: #17231eee;
   color: white;
-  font-size: 11px;
+  font-size: 12px;
   white-space: nowrap;
   pointer-events: none;
 }
@@ -625,7 +686,7 @@ main {
   flex-wrap: wrap;
   gap: 13px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .table-actions {
@@ -642,7 +703,7 @@ main {
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 13px;
   white-space: nowrap;
 }
 
@@ -722,7 +783,7 @@ tbody tr.active {
   main { padding: 25px 16px; }
   .panel { padding: 17px; }
   .metrics article { padding: 12px; }
-  .metrics b { font-size: 21px; }
+  .metrics b { font-size: 22px; }
   .title { align-items: start; flex-direction: column; }
   .period-stats { grid-template-columns: repeat(2, 1fr); }
 }
