@@ -219,6 +219,28 @@ def executar_despacho(ajustes=None, salvar=False, dados_base=None, termicas_sele
     for i in termicas:
         resultado[f"gt_{i}"] = [m.getVal(gt[i, t]) for t in PERIODOS]
         resultado[f"u_{i}"] = [round(m.getVal(u[i, t])) for t in PERIODOS]
+        partidas = {t: round(m.getVal(y[i, t])) for t in PERIODOS}
+        paradas = {t: round(m.getVal(w[i, t])) for t in PERIODOS}
+        tr_up = termicas[i]["trajetoria_partida"]
+        tr_dn = termicas[i]["trajetoria_parada"]
+
+        # Potencias das trajetorias A e D lidas de rampas.dat pela PySDDP.
+        # None deixa a curva interrompida quando a unidade opera fora da rampa.
+        rampa_partida = []
+        rampa_parada = []
+        for t in PERIODOS:
+            potencia_partida = sum(
+                tr_up[k - 1] * partidas.get(t - k + 1, 0)
+                for k in range(1, len(tr_up) + 1)
+            )
+            potencia_parada = sum(
+                tr_dn[len(tr_dn) - k] * paradas.get(t + k, 0)
+                for k in range(1, len(tr_dn) + 1)
+            )
+            rampa_partida.append(potencia_partida if potencia_partida else None)
+            rampa_parada.append(potencia_parada if potencia_parada else None)
+        resultado[f"rampa_partida_{i}"] = rampa_partida
+        resultado[f"rampa_parada_{i}"] = rampa_parada
     for h in hidros:
         resultado[f"afluencia_{h}"] = hidros[h]["afluencia"]
         resultado[f"q_{h}"] = [m.getVal(q[h, t]) for t in PERIODOS]
